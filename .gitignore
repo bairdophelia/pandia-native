@@ -1,0 +1,26 @@
+# Xcode / Swift build products and local state — none of this belongs in
+# the repo; GitHub Actions rebuilds everything fresh from source each time.
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+*.xcscmblueprint
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Downloaded/cached model weights — large binary files, fetched at runtime
+# instead (see README's MLX Swift note), never committed.
+*.safetensors
+*.gguf
+Models/
+
+# macOS
+.DS_Store
+
+# Never commit secrets. Cloud API keys live only in the app's own Settings
+# on-device — see README's "Build & install" section.
+*.env
+.env
+Secrets.plist
