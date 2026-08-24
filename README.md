@@ -47,5 +47,21 @@ instead of through a browser engine.
 
 ## Status
 
-Scaffold only — the Xcode project and app code haven't been written yet.
-This commit exists so there's a repo for that to land in.
+Stage 1: a deliberately minimal SwiftUI app (`Sources/`) plus the
+GitHub Actions build (`.github/workflows/build.yml`, driven by
+`project.yml` via XcodeGen — see that file's comment for why nobody hand-edits
+an `.xcodeproj` here) whose only job is to prove the whole pipeline works:
+push → GitHub's Mac hardware builds an unsigned `.ipa` → AltServer signs it
+with your free Apple ID and installs it → the phone shows "Pandia — native
+build pipeline online."
+
+Once that's confirmed working end to end, the real features get layered in
+on top of a known-good baseline, roughly in this order: home-mode LAN chat
+to Selene (needs `../app.py`'s `on_connect` fix, already applied — see its
+comment on why `socket.io-client-swift` needs the token as a query param,
+not the protocol auth payload the PWA uses), away-mode cloud fallback
+(Anthropic/Groq, mirroring `../js/brain.js`), then the on-device local model
+via MLX Swift — that last one gets its own stage specifically because its
+exact package/API surface is the least certain of everything here and is
+easiest to debug in isolation against a working app rather than mixed in
+with everything else failing at once.

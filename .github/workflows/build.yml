@@ -1,0 +1,49 @@
+# Builds an unsigned .ipa on GitHub's own Mac hardware — free and unmetered
+# because this repo is public (see ../../README.md's "Build & install"
+# section). "Unsigned" here means no Apple provisioning identity is applied
+# yet; that happens afterward, locally, when AltServer signs it with your
+# free Apple ID during install to the phone.
+name: Build unsigned .ipa
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build for a real device (unsigned)
+        run: |
+          xcodebuild archive \
+            -project Pandia.xcodeproj \
+            -scheme Pandia \
+            -configuration Release \
+            -archivePath build/Pandia.xcarchive \
+            -destination "generic/platform=iOS" \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package .ipa
+        run: |
+          mkdir -p build/Payload
+          cp -r build/Pandia.xcarchive/Products/Applications/Pandia.app build/Payload/
+          cd build && zip -r Pandia.ipa Payload
+
+      - name: Upload .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pandia-ipa
+          path: build/Pandia.ipa

@@ -1,0 +1,33 @@
+# XcodeGen config — generates Pandia.xcodeproj from this file. Nobody edits
+# the .xcodeproj by hand or commits it; `xcodegen generate` (run by the
+# GitHub Actions workflow, see .github/workflows/build.yml) regenerates it
+# fresh on every build. See native/README.md for why: no Mac in this loop
+# to run Xcode's GUI project editor in the first place.
+name: Pandia
+
+options:
+  bundleIdPrefix: com.ophelia.pandia
+  deploymentTarget:
+    iOS: "17.0"
+
+targets:
+  Pandia:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ophelia.pandia
+        PRODUCT_NAME: Pandia
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1" # iPhone only
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        # Signing happens later, on-device, via AltServer + your free Apple
+        # ID (see README) — not here. The build this config produces is
+        # deliberately unsigned.
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
