@@ -158,11 +158,24 @@ one; there's no Xcode GUI in CI to click through. Fixed in
 the identical reason). Nothing in `LocalBrain.swift` itself changed for
 this round.
 
-If CI fails again, the pattern so far has held twice on the API-shape
-front: the compiler's own error message names the real signature, and the
-fix is mechanical from there — that's the first thing to check in a new
-log, not a sign anything upstream (LAN, cloud, chat UI) broke, since those
-are proven independently of this file.
+*Round 4* (current): past the macro-trust wall, straight into a version
+mismatch — `Missing package product 'Tokenizers'`. The `main`-branch docs
+this stage was researched from describe a newer, not-yet-tagged shape of
+`swift-transformers`; the actual published version SPM resolved (0.1.24,
+picked to satisfy `project.yml`'s `from: 0.1.0` floor) has a different
+`Package.swift` — its real product is named `Transformers` (capitalized,
+singular), with `Tokenizers` as a target bundled inside it rather than a
+product of its own. Fixed by pointing `project.yml`'s `SwiftTransformers`
+dependency at `product: Transformers` instead — confirmed against that
+exact tag's own `Package.swift`, not the `main` branch, this time.
+`LocalBrain.swift`'s `import Tokenizers` didn't need to change: that
+module is still reachable once the right product is linked in.
+
+If CI fails again, the pattern so far has held: the compiler's own error
+message (or, this round, the package resolver's) names the real problem
+directly, and the fix is mechanical from there — that's the first thing to
+check in a new log, not a sign anything upstream (LAN, cloud, chat UI)
+broke, since those are proven independently of this file.
 
 Deliberately left out of this first pass, to keep the guessed surface
 small: download-progress reporting (shows nothing but the normal "sending"

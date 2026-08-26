@@ -64,5 +64,11 @@ targets:
         product: MLXHuggingFace
       - package: SwiftHuggingFace
         product: HuggingFace
+      # "Transformers" is the actual product name at the resolved version
+      # (0.1.24) — confirmed from that tag's own Package.swift after CI
+      # failed with "Missing package product 'Tokenizers'". The Tokenizers
+      # *module* LocalBrain.swift imports still resolves fine once this is
+      # right: it's a target bundled inside the Transformers product, not
+      # a standalone product of its own at this version.
       - package: SwiftTransformers
-        product: Tokenizers
+        product: Transformers
