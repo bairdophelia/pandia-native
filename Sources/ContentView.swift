@@ -48,6 +48,8 @@ struct ContentView: View {
 
                 inputBar
             }
+            .background(Color.seleneInk.ignoresSafeArea())
+            .tint(.seleneTeal)
             .navigationTitle("P.A.N.D.I.A.")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -87,11 +89,11 @@ struct ContentView: View {
     private var statusLine: some View {
         if lan.isConnected {
             Label("Home — connected to Selene", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.teal)
+                .foregroundStyle(.seleneTeal)
                 .font(.footnote)
         } else if !settings.lanHost.isEmpty {
             Label("Away — using cloud fallback", systemImage: "cloud.fill")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.seleneOrange)
                 .font(.footnote)
         } else {
             Text("Set up Selene's address in Settings to enable home mode.")
@@ -118,7 +120,48 @@ struct ContentView: View {
 
     private func attemptConnect() {
         Task {
-            _ = await lan.tryConnect(host: settings.lanHost, token: settings.lanToken)
+            let connected = await lan.tryConnect(host: settings.lanHost, token: settings.lanToken)
+            if connected {
+                await syncPendingTurnsIfNeeded()
+            }
+        }
+    }
+
+    /// Stage 6: the native equivalent of sync.js's syncPendingTurns, run
+    /// once per successful reconnect (see attemptConnect above) — mirrors
+    /// when the PWA calls it (app.js, right after wireLanEvents' connect
+    /// handler fires). Pairs consecutive unsynced (user, assistant) turns
+    /// and hands them to Selene via LANClient.syncTurns; a stray trailing
+    /// unpaired turn (message sent, app closed before a reply came back)
+    /// is left unsynced on purpose — same reasoning as sync.js.
+    private func syncPendingTurnsIfNeeded() async {
+        let unsynced = turns.filter { !$0.synced }
+        guard !unsynced.isEmpty else { return }
+
+        var pairs: [(user: String, reply: String)] = []
+        var consumed: [ChatTurn] = []
+        var i = 0
+        while i < unsynced.count - 1 {
+            let a = unsynced[i]
+            let b = unsynced[i + 1]
+            if a.role == "user" && b.role == "assistant" {
+                pairs.append((user: a.text, reply: b.text))
+                consumed.append(a)
+                consumed.append(b)
+                i += 2
+            } else {
+                i += 1
+            }
+        }
+        guard !pairs.isEmpty else { return }
+
+        do {
+            let syncedCount = try await lan.syncTurns(pairs)
+            for turn in consumed { turn.synced = true }
+            print("[Pandia] synced \(syncedCount) away-mode turn(s) into Selene's memory.")
+        } catch {
+            // Will retry on next reconnect — same as sync.js's catch block.
+            print("[Pandia] sync failed, will retry on next reconnect — \(error.localizedDescription)")
         }
     }
 
@@ -128,6 +171,9 @@ struct ContentView: View {
         draft = ""
         isSending = true
 
+        // Stage 6: assume unsynced until we know what actually answered —
+        // corrected right below once `reply` comes back, since a
+        // LAN-answered turn (Selene lived through it) never needs syncing.
         let userTurn = ChatTurn(role: "user", text: text)
         modelContext.insert(userTurn)
 
@@ -150,7 +196,13 @@ struct ContentView: View {
                     }
                 }
             )
-            let assistantTurn = ChatTurn(role: "assistant", text: reply.text, source: reply.source)
+            // "lan"/"local" both mean Selene answered directly — she was
+            // there for it, so it's already part of her memory and never
+            // needs folding back in. Anything else (on-device or cloud)
+            // starts unsynced. See syncPendingTurnsIfNeeded above.
+            let livedThroughIt = reply.source == "lan" || reply.source == "local"
+            userTurn.synced = livedThroughIt
+            let assistantTurn = ChatTurn(role: "assistant", text: reply.text, source: reply.source, localError: reply.localError, synced: livedThroughIt)
             modelContext.insert(assistantTurn)
             isSending = false
         }
@@ -171,12 +223,22 @@ private struct ChatBubble: View {
             Text(turn.text)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(turn.role == "user" ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.15))
+                .background(turn.role == "user" ? Color.seleneGold.opacity(0.22) : Color.white.opacity(0.07))
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             if let source = turn.source {
                 Text(sourceLabel(source))
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(sourceColor(source))
+            }
+            // Rides along even on a turn where something else (cloud)
+            // still answered — see ChatTurn.localError's doc comment.
+            // Without this, a local-mode failure is invisible whenever
+            // the fallback succeeds, which is exactly backwards for
+            // actually testing the on-device model.
+            if let localError = turn.localError {
+                Text("on-device model failed: \(localError)")
+                    .font(.caption2)
+                    .foregroundStyle(.seleneDangerRed)
             }
         }
         .frame(maxWidth: .infinity, alignment: turn.role == "user" ? .trailing : .leading)
@@ -195,6 +257,20 @@ private struct ChatBubble: View {
         case "device": return "this phone · offline"
         case "error": return "couldn't reach either brain"
         default: return "cloud · \(source.capitalized)"
+        }
+    }
+
+    // Same state-color meanings Selene's own CSS uses (see Theme.swift's
+    // doc comment): teal = her, lilac = local, orange = cloud, red = dead
+    // end. Applying that here, not just the hex values, is the actual
+    // point of matching her palette — not just "colors from the same
+    // family" but "the same color still means the same thing."
+    private func sourceColor(_ source: String) -> Color {
+        switch source {
+        case "lan", "local": return .seleneTeal
+        case "device": return .seleneLilac
+        case "error": return .seleneDangerRed
+        default: return .seleneOrange
         }
     }
 }

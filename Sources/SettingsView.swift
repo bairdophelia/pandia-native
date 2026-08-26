@@ -38,7 +38,7 @@ struct SettingsView: View {
                     .disabled(isConnecting || settings.lanHost.isEmpty)
                     if lan.isConnected {
                         Label("Connected to Selene", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.teal)
+                            .foregroundStyle(.seleneTeal)
                     }
                 }
 
@@ -48,6 +48,7 @@ struct SettingsView: View {
                         Text(settings.localModelId)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        Toggle("Local only — don't fall back to cloud", isOn: $settings.localOnlyMode)
                     }
                 } header: {
                     Text("On-device model (experimental)")
@@ -57,7 +58,7 @@ struct SettingsView: View {
                     // first message after turning this on downloads the
                     // model (several hundred MB) before it can answer, so
                     // worth doing on WiFi the first time.
-                    Text("Answers on this phone with no internet needed, once the model's downloaded. First use downloads it — do that on WiFi. Falls back to cloud if it's not ready yet.")
+                    Text("Answers on this phone with no internet needed, once the model's downloaded. First use downloads it — do that on WiFi. Normally falls back to cloud if it's not ready yet; turn on \"Local only\" to see the real error instead, useful while testing.")
                 }
 
                 Section("Away mode — cloud fallback") {
@@ -71,6 +72,7 @@ struct SettingsView: View {
                     Toggle("Ask before every cloud call", isOn: $settings.requireCloudConsent)
                 }
             }
+            .tint(.seleneTeal)
             .navigationTitle("Settings")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

@@ -35,6 +35,16 @@ final class PandiaSettings: ObservableObject {
     @Published var localModelId: String {
         didSet { UserDefaults.standard.set(localModelId, forKey: Self.localModelIdKey) }
     }
+    /// Off by default. On: PandiaBrain never falls back to cloud after a
+    /// local-model failure — it returns the actual error instead. Added
+    /// because the normal fallback silently masks local failures behind a
+    /// working cloud reply, which is exactly wrong for testing whether the
+    /// local model itself works — see PandiaBrain.swift's doc comment.
+    /// Doesn't touch the LAN check: this is specifically about not letting
+    /// cloud paper over a local problem, not about refusing Selene.
+    @Published var localOnlyMode: Bool {
+        didSet { UserDefaults.standard.set(localOnlyMode, forKey: Self.localOnlyModeKey) }
+    }
 
     private static let lanHostKey = "lanHost"
     private static let lanTokenKey = "lanToken"
@@ -43,6 +53,7 @@ final class PandiaSettings: ObservableObject {
     private static let requireCloudConsentKey = "requireCloudConsent"
     private static let useLocalModelKey = "useLocalModel"
     private static let localModelIdKey = "localModelId"
+    private static let localOnlyModeKey = "localOnlyMode"
     private static let defaultLocalModelId = "mlx-community/Llama-3.2-1B-Instruct-4bit"
 
     init() {
@@ -56,5 +67,6 @@ final class PandiaSettings: ObservableObject {
         requireCloudConsent = UserDefaults.standard.object(forKey: Self.requireCloudConsentKey) as? Bool ?? true
         useLocalModel = UserDefaults.standard.object(forKey: Self.useLocalModelKey) as? Bool ?? false
         localModelId = UserDefaults.standard.string(forKey: Self.localModelIdKey) ?? Self.defaultLocalModelId
+        localOnlyMode = UserDefaults.standard.object(forKey: Self.localOnlyModeKey) as? Bool ?? false
     }
 }

@@ -18,6 +18,14 @@ enum PandiaBrain {
         /// rawValue when it went straight to cloud, or "error" when
         /// nothing could answer at all.
         let source: String
+        /// Set only when the on-device model was tried and failed. If
+        /// cloud then answered anyway, this rides along on that Reply so
+        /// the failure isn't invisible just because something else picked
+        /// up the slack — mirrors the PWA's brain.js `localError` field
+        /// (see app.js's renderMessage). See PandiaSettings.localOnlyMode
+        /// for forcing this to surface as the actual reply instead of
+        /// being masked by a cloud fallback.
+        var localError: String? = nil
     }
 
     static func reply(
@@ -44,16 +52,28 @@ enum PandiaBrain {
             }
         }
 
+        var localError: String?
         if settings.useLocalModel {
             do {
                 let replyText = try await LocalBrain.shared.reply(to: text, modelId: settings.localModelId)
                 return Reply(text: replyText, source: "device")
             } catch {
-                // Falls through to cloud below — same recovery brain.js's
-                // awayModeReply does when the on-device model throws (not
-                // supported / failed to load / generation error). See
-                // LocalBrain.swift's doc comment for why this stage's error
-                // cases are broader and less certain than LAN's or cloud's.
+                // Normally falls through to cloud below — same recovery
+                // brain.js's awayModeReply does when the on-device model
+                // throws (not supported / failed to load / generation
+                // error). See LocalBrain.swift's doc comment for why this
+                // stage's error cases are broader and less certain than
+                // LAN's or cloud's. localOnlyMode turns that fallback off:
+                // the point of it is to see the on-device model's own
+                // failures, not have cloud quietly paper over them.
+                localError = error.localizedDescription
+                if settings.localOnlyMode {
+                    return Reply(
+                        text: "On-device model didn't answer: \(localError!)",
+                        source: "error",
+                        localError: localError
+                    )
+                }
             }
         }
 
@@ -65,7 +85,7 @@ enum PandiaBrain {
                 requireConsent: settings.requireCloudConsent,
                 confirm: confirm
             )
-            return Reply(text: replyText, source: settings.cloudProvider.rawValue)
+            return Reply(text: replyText, source: settings.cloudProvider.rawValue, localError: localError)
         } catch {
             let declined = (error as? CloudBrainError).map {
                 if case .consentDeclined = $0 { return true }
@@ -74,7 +94,7 @@ enum PandiaBrain {
             let text = declined
                 ? "Okay — didn't send that anywhere. Ask again if you change your mind, or reconnect to Selene at home."
                 : "Couldn't answer that away from the PC: \(error.localizedDescription)"
-            return Reply(text: text, source: "error")
+            return Reply(text: text, source: "error", localError: localError)
         }
     }
 }

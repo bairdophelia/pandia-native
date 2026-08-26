@@ -171,14 +171,97 @@ exact tag's own `Package.swift`, not the `main` branch, this time.
 `LocalBrain.swift`'s `import Tokenizers` didn't need to change: that
 module is still reachable once the right product is linked in.
 
-If CI fails again, the pattern so far has held: the compiler's own error
-message (or, this round, the package resolver's) names the real problem
-directly, and the fix is mechanical from there — that's the first thing to
-check in a new log, not a sign anything upstream (LAN, cloud, chat UI)
-broke, since those are proven independently of this file.
+Round 4 built clean and installed — first real on-device test of this
+stage. Surfaced a behavior gap, not a compile bug: with "Use on-device
+model" on but not yet actually working, replies were quietly going to
+cloud with no visible sign the local attempt even happened or why it
+failed — `PandiaBrain.swift` swallowed that error on its way to the
+fallback. Fixed by adding `PandiaSettings.localOnlyMode` (Settings toggle:
+"Local only — don't fall back to cloud") to skip the cloud fallback
+entirely and surface the real error instead, plus threading a
+`localError` string through `PandiaBrain.Reply` → `ChatTurn` → the chat
+bubble so a local failure is visible (in orange, under the reply) even
+in normal mode, on whichever turn it actually happened, whether or not
+cloud picked up the slack that turn.
 
 Deliberately left out of this first pass, to keep the guessed surface
 small: download-progress reporting (shows nothing but the normal "sending"
 spinner while the model downloads) and response streaming (waits for the
 whole reply like cloud does, no token-by-token). Both are reasonable
 follow-ups once this compiles and runs at all.
+
+**App icon added (2026-08-26):** the app had none before this — a real
+gap, since Stage 1 through 5 all installed fine but showed as a blank/
+default icon on the home screen. `Sources/Assets.xcassets/AppIcon
+.appiconset` now holds a single 1024×1024 generated image (a gold crescent
+moon with a couple of sparkle stars on a near-black background, matching
+the `moon.stars.fill` motif used elsewhere and the Selene/Pandia moon
+theming), wired in via `project.yml`'s `ASSETCATALOG_COMPILER_APPICON
+_NAME`. Single-size icon is the modern minimum — iOS 17+ generates every
+other size/scale from that one image, no need to hand-produce a set of
+@1x/@2x/@3x variants.
+
+**Icon v2 + style alignment with Selene (2026-08-26):** the v1 icon used
+generic moon colors picked from memory, not Selene's actual palette, and
+nothing else in the app referenced her visual identity at all. Fixed both,
+reading Selene's real source rather than guessing:
+
+- `../selene/static/v2/styles.css`'s `:root` block gave the exact palette:
+  `--ink #02040a`, `--cyan-bright #4fc6bd` (her signature teal), `--gold
+  #d9b768` (muted, not bright yellow), `--lilac #c9a8f5`, `--warn-orange
+  #e0923c`, `--danger-red #e05a44`. Selene's CSS explicitly keeps a state
+  palette where "the same color always means the same thing everywhere on
+  screen" — worth carrying the *meanings* over, not just the hex values.
+- `../selene/static/v2/js/sphere.js` confirmed Selene's literal visual
+  identity: her 3D moon sits inside a faint teal icosahedral wireframe
+  shell (`SHELL_TEAL = 0x4fc6bd`, "a touch of containment magic... teal to
+  tie in" per its own comment), with lilac "wireframe walker" particles
+  (`WALKER_COLOR`) traveling along it. That's specifically what "the real
+  wireframe" refers to.
+
+`Sources/Theme.swift` (new) now defines `Color.selene*` constants pulled
+directly from that palette, with doc comments tying each one back to its
+source and its *meaning* — teal for "connected to Selene," lilac for
+local/on-device, orange for cloud, red for a dead end. `ContentView.swift`
+and `SettingsView.swift` were updated to use these throughout (background,
+tint, chat bubble colors, the per-reply source tag) in place of the
+generic `.accentColor`/`.teal`/`.orange` they used before. The app icon
+(`generate_icon.py`, regenerated) was rebuilt on the same palette and
+gained a subtle teal wireframe-globe motif — an outer circle plus nested
+latitude/longitude ellipses at low opacity — sitting behind the crescent
+moon, echoing sphere.js's wireframe shell without literally copying
+Selene's animated 3D scene (that's her signature, not Pandia's).
+
+**Stage 6 — syncing away-mode turns back into Selene's memory
+(2026-08-26):** closes a real gap flagged during testing: anything said to
+Pandia while away (on-device model or cloud) previously stayed local to
+the phone forever — Selene never found out it happened, unlike the PWA,
+which already had this via `js/sync.js` + `js/lan_client.js`'s
+`syncTurns`. Native now matches:
+
+- `ChatTurn.swift` gained a `synced: Bool` field (default `false`).
+  Turns Selene answered directly (`source == "lan"` or `"local"`) are
+  created already synced — she lived through them, there's nothing to
+  fold in. Turns from the on-device model or cloud start unsynced.
+- `LANClient.swift` gained `syncTurns(_:) async throws -> Int`, emitting
+  `pandia_sync_turns` with `{"turns": [{"user":, "reply":}, ...]}` and
+  awaiting a `pandia_sync_ack` event carrying `{"synced": Int}` — the
+  exact contract `../selene/app.py`'s `on_pandia_sync_turns` handler
+  expects, confirmed by reading it directly. Uses its own
+  `syncContinuation`, separate from chat's `replyContinuation`, so a sync
+  call can never collide with an in-flight message send; both get failed
+  on disconnect/timeout the same way.
+- `ContentView.swift` gained `syncPendingTurnsIfNeeded()`, run right after
+  every successful `attemptConnect()` — same trigger point the PWA uses.
+  It pairs up consecutive unsynced `(user, assistant)` turns in order (a
+  stray unpaired trailing turn — message sent, app closed before a reply
+  came — is left unsynced on purpose, same as `sync.js`), hands the pairs
+  to `LANClient.syncTurns`, and marks the consumed turns `synced = true`
+  on success. A failed sync just logs and retries on the next reconnect.
+- `send()` now sets `synced` on both the user and assistant turn based on
+  which brain actually answered that turn, instead of always defaulting
+  to `false`.
+
+Selene's handler folds these in as history and, for turns worth
+remembering, into long-term memory — without asking her brain to
+re-answer, since these turns already have a reply.

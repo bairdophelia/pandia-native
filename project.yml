@@ -49,6 +49,11 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        # Points at Sources/Assets.xcassets/AppIcon.appiconset — a single
+        # 1024x1024 "universal" icon, the modern minimal form (Xcode 14+/
+        # iOS 17+ handles all the smaller sizes itself from that one
+        # image, no need to hand-generate a dozen @2x/@3x variants).
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # Signing happens later, on-device, via AltServer + your free Apple
         # ID (see README) — not here. The build this config produces is
         # deliberately unsigned.

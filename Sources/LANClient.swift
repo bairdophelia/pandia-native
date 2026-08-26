@@ -57,6 +57,14 @@ final class LANClient: ObservableObject {
     private var replyContinuation: CheckedContinuation<String, Error>?
     private static let replyTimeout: TimeInterval = 30
 
+    // Stage 6 sync state — a separate continuation from replyContinuation
+    // on purpose. A sync call and a chat send never race in practice (the
+    // UI only kicks off a sync right after connecting, before any message
+    // is sent), but sharing one continuation would be a landmine the day
+    // that assumption changes, so each gets its own slot instead.
+    private var syncContinuation: CheckedContinuation<Int, Error>?
+    private static let syncTimeout: TimeInterval = 15
+
     private static let connectTimeout: TimeInterval = 2.5
 
     /// Attempts a home-mode connection. Never throws — callers treat this
@@ -111,6 +119,7 @@ final class LANClient: ObservableObject {
                 // sendText catch block.
                 self?.isConnected = false
                 self?.failPendingReply(with: .droppedMidReply)
+                self?.failPendingSync(with: .droppedMidReply)
             }
 
             // Stage 4 chat events — see lan_client.js's _wireSocket for the
@@ -135,6 +144,15 @@ final class LANClient: ObservableObject {
                 guard let self, let dict = data.first as? [String: Any],
                       let source = dict["source"] as? String else { return }
                 self.lastBrainSource = source
+            }
+
+            // Stage 6 — ack for syncTurns below. See app.py's
+            // on_pandia_sync_turns handler for the {"synced": Int} shape.
+            socket.on("pandia_sync_ack") { [weak self] data, _ in
+                guard let self, let dict = data.first as? [String: Any],
+                      let synced = dict["synced"] as? Int else { return }
+                self.syncContinuation?.resume(returning: synced)
+                self.syncContinuation = nil
             }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.connectTimeout) {
@@ -163,6 +181,26 @@ final class LANClient: ObservableObject {
         }
     }
 
+    /// Folds away-mode turns into Selene's permanent memory — the native
+    /// equivalent of lan_client.js's syncTurns, called by
+    /// ContentView.syncPendingTurnsIfNeeded once home mode reconnects. Pass
+    /// already-paired (user, reply) turns; pairing/filtering happens on the
+    /// caller side, same split the PWA keeps between sync.js (pairing) and
+    /// lan_client.js (transport). Selene's own handler decides what's
+    /// worth remembering long-term — this just hands her the raw turns.
+    func syncTurns(_ turns: [(user: String, reply: String)]) async throws -> Int {
+        guard let socket, isConnected else { throw LANClientError.notConnected }
+        guard !turns.isEmpty else { return 0 }
+        let payload = turns.map { ["user": $0.user, "reply": $0.reply] }
+        return try await withCheckedThrowingContinuation { continuation in
+            self.syncContinuation = continuation
+            socket.emit("pandia_sync_turns", ["turns": payload])
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.syncTimeout) { [weak self] in
+                self?.failPendingSync(with: .timedOut)
+            }
+        }
+    }
+
     private func failPendingReply(with error: LANClientError) {
         guard let continuation = replyContinuation else { return }
         replyContinuation = nil
@@ -170,8 +208,15 @@ final class LANClient: ObservableObject {
         continuation.resume(throwing: error)
     }
 
+    private func failPendingSync(with error: LANClientError) {
+        guard let continuation = syncContinuation else { return }
+        syncContinuation = nil
+        continuation.resume(throwing: error)
+    }
+
     func disconnect() {
         failPendingReply(with: .notConnected)
+        failPendingSync(with: .notConnected)
         socket?.removeAllHandlers()
         socket?.disconnect()
         socket = nil
