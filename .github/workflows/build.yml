@@ -23,6 +23,15 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      # -skipMacroValidation: Stage 5 (../../README.md) added a Swift
+      # macro-based dependency (MLXHuggingFace's #hubDownloader()/
+      # #huggingFaceTokenizerLoader()). SPM normally requires an
+      # interactive "trust this macro plugin" dialog the first time a
+      # package uses one — there's no Xcode GUI here to click through, so
+      # without this flag the build fails with "Macro ... must be enabled
+      # before it can be used." This tells xcodebuild to skip that
+      # validation instead, same fix documented for Xcode Cloud CI (which
+      # can't show the dialog either, for the same reason).
       - name: Build for a real device (unsigned)
         run: |
           xcodebuild archive \
@@ -32,6 +41,7 @@ jobs:
             -archivePath build/Pandia.xcarchive \
             -destination "generic/platform=iOS" \
             -sdk iphoneos \
+            -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
