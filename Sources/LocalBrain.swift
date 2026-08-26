@@ -1,6 +1,9 @@
 import Foundation
 import MLXLLM
 import MLXLMCommon
+import MLXHuggingFace
+import HuggingFace
+import Tokenizers
 
 // Stage 5: on-device inference via MLX Swift — the actual reason this
 // native rebuild exists (see ../README.md's "Why a native rebuild": WebGPU
@@ -12,22 +15,30 @@ import MLXLMCommon
 // LANClient.swift (Stage 2's actual build failure) or PandiaBrain's
 // actor-isolation fix (Stage 4's). Those were built by reading this
 // project's own working source. This one is built from mlx-swift-lm's
-// docs/skill reference, fetched via web search rather than read directly —
-// that repo split out of mlx-swift-examples recently (v3, with breaking
-// changes to how it handles tokenizers/downloading), and I cross-checked
-// the load→session→respond shape across three separate fetches before
-// settling on it, but it is still not a compile I could verify myself (no
-// Xcode/macOS in this environment). If CI fails here, that's the expected
-// first outcome for this stage specifically, not a sign something else
-// broke — see ../README.md's Stage 5 note for what to check first.
+// own DocC documentation (Libraries/MLXLMCommon/Documentation.docc/
+// using.md, shipped inside the library's own source tree — the most
+// authoritative thing I could find without reading the .swift source
+// directly), not a compile I could verify myself (no Xcode/macOS in this
+// environment).
 //
-// Deliberately minimal for this first pass, to keep the guessed API
-// surface as small as possible:
-//   - No download-progress reporting. loadContainer has a documented
-//     progressHandler overload, but I couldn't confirm its exact
-//     parameter shape with confidence, so this uses the plain
-//     `loadContainer(configuration:)` call and the UI just shows its
-//     normal "sending" spinner for however long the download+load takes.
+// ROUND 1 of this stage's CI run failed here: `loadContainer(configuration:)`
+// doesn't exist — the compiler's own error printed the real signature,
+// `loadContainer(from:using:configuration:useLatest:progressHandler:)`,
+// which needed a `Downloader` and a `TokenizerLoader` I hadn't supplied.
+// This round supplies them via the `#hubDownloader()` /
+// `#huggingFaceTokenizerLoader()` macros, which that same DocC page
+// explicitly calls out as "the simplest way" for anyone on this major
+// version of the library — hence the three extra imports above
+// (MLXHuggingFace defines the macros; HuggingFace/Tokenizers are what they
+// expand to, so the calling file needs those types in scope too). If THIS
+// specific pairing is also wrong, the compiler's error should again name
+// the real signature directly — that's been reliable both times so far in
+// this project (see native/README.md's Stage 2 and this stage's notes).
+//
+// Deliberately minimal otherwise, to keep the guessed API surface small:
+//   - No download-progress reporting (progressHandler has a default and is
+//     omitted here) — the UI just shows its normal "sending" spinner for
+//     however long the download+load takes.
 //   - No response streaming. ChatSession also exposes streamResponse(to:)
 //     for token-by-token output; this uses the simpler respond(to:) that
 //     returns the whole reply at once, matching CloudBrain.complete's
@@ -52,7 +63,11 @@ actor LocalBrain {
         if let session, loadedModelId == modelId {
             return session
         }
-        let container = try await LLMModelFactory.shared.loadContainer(configuration: .init(id: modelId))
+        let container = try await LLMModelFactory.shared.loadContainer(
+            from: #hubDownloader(),
+            using: #huggingFaceTokenizerLoader(),
+            configuration: .init(id: modelId)
+        )
         let newSession = ChatSession(container)
         session = newSession
         loadedModelId = modelId

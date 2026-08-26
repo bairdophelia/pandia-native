@@ -21,6 +21,17 @@ packages:
   MLXSwiftLM:
     url: https://github.com/ml-explore/mlx-swift-lm
     from: 3.31.3
+  # Round 2 of Stage 5, added alongside MLXHuggingFace below: the
+  # #hubDownloader()/#huggingFaceTokenizerLoader() macros LocalBrain.swift
+  # uses expand to types from these two, so the calling file needs them in
+  # scope too — see that file's doc comment and mlx-swift-lm's own
+  # Documentation.docc/using.md.
+  SwiftHuggingFace:
+    url: https://github.com/huggingface/swift-huggingface
+    from: 0.9.0
+  SwiftTransformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: 0.1.0
 
 targets:
   Pandia:
@@ -49,3 +60,9 @@ targets:
         product: MLXLLM
       - package: MLXSwiftLM
         product: MLXLMCommon
+      - package: MLXSwiftLM
+        product: MLXHuggingFace
+      - package: SwiftHuggingFace
+        product: HuggingFace
+      - package: SwiftTransformers
+        product: Tokenizers

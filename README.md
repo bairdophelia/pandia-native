@@ -128,23 +128,30 @@ being small enough for a phone) the first time it's used.
 
 **BY FAR the least certain file in this project so far.** Every other
 stage's riskiest file was built by reading source that already existed in
-this repo or the PWA — an actual compile error to fix (Stage 2), an actual
-actor-isolation rule to apply (Stage 4). `LocalBrain.swift` is built from
-`mlx-swift-lm`'s own docs, fetched via web search rather than read
-directly, because that library split out of `mlx-swift-examples` recently
-(v3, with breaking changes to how it handles tokenizers/downloading) — the
-docs describe a `LLMModelFactory.shared.loadContainer(configuration:)` →
-`ChatSession(container)` → `session.respond(to:)` shape, cross-checked
-across three separate fetches before settling on it, but never a compile I
-could verify myself. If CI fails here, check in this order: (1) the two
-product names in `project.yml` (`MLXLLM`, `MLXLMCommon`) against whatever
-`mlx-swift-lm`'s actual `Package.swift` exposes today — package contents
-can drift from what I found; (2) `LLMModelFactory`/`ChatSession`'s exact
-method names and signatures against whatever the compiler says exists; (3)
-whether `.init(id: modelId)` is really how the config type mlx-swift-lm
-expects gets built, since I inferred that from a doc snippet rather than a
-type declaration. None of that is a sign anything upstream (LAN, cloud,
-chat UI) broke — those are proven independently of this file.
+this repo or the PWA. `LocalBrain.swift` is built from `mlx-swift-lm`'s own
+docs, fetched via web search rather than read directly, because that
+library split out of `mlx-swift-examples` recently (v3, with breaking
+changes to how it handles tokenizers/downloading).
+
+*Round 1* guessed `LLMModelFactory.shared.loadContainer(configuration:)` —
+wrong, but usefully wrong: the compiler's own error named the real method,
+`loadContainer(from:using:configuration:useLatest:progressHandler:)`,
+which needs a `Downloader` and a `TokenizerLoader` to be passed in. *Round
+2* (current) supplies those via the `#hubDownloader()` /
+`#huggingFaceTokenizerLoader()` macros — mlx-swift-lm's own DocC page
+(`Libraries/MLXLMCommon/Documentation.docc/using.md`, shipped in the
+library's source, about as authoritative as a source gets without reading
+the Swift itself) calls this out by name as "the simplest way" for this
+major version. That needed three more packages (`MLXHuggingFace`,
+`SwiftHuggingFace` → `HuggingFace`, `SwiftTransformers` → `Tokenizers` —
+see `project.yml`) and three more imports, since the macros expand to code
+that references those modules' types.
+
+If CI fails again, the pattern so far has held twice: the compiler's own
+error message names the real signature, and the fix is mechanical from
+there — that's the first thing to check in the new log, not a sign
+anything upstream (LAN, cloud, chat UI) broke, since those are proven
+independently of this file.
 
 Deliberately left out of this first pass, to keep the guessed surface
 small: download-progress reporting (shows nothing but the normal "sending"
