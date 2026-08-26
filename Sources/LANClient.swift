@@ -22,12 +22,40 @@ import SocketIO
 // myself (no Xcode/macOS in this environment — see ../README.md). If the
 // first CI build fails inside this file specifically, that's expected as
 // the most likely spot, not a sign something upstream is wrong.
+enum LANClientError: Error, LocalizedError {
+    case notConnected
+    case droppedMidReply
+    case timedOut
+
+    var errorDescription: String? {
+        switch self {
+        case .notConnected: return "Not connected to Selene (home mode)."
+        case .droppedMidReply: return "Connection to Selene dropped before she finished replying."
+        case .timedOut: return "Selene didn't reply in time."
+        }
+    }
+}
+
 @MainActor
 final class LANClient: ObservableObject {
     @Published private(set) var isConnected = false
+    /// Set from Selene's own `brain_source` event (see app.py's
+    /// _process_message) — "local" or the cloud provider Selene herself
+    /// used that turn. nil until the first reply arrives.
+    @Published private(set) var lastBrainSource: String?
 
     private var manager: SocketManager?
     private var socket: SocketIOClient?
+
+    // Stage 4 chat send/receive state — mirrors lan_client.js's onReply
+    // buffering in app.js's wireLanEvents: speak_sentence events arrive as
+    // Selene talks, sentence by sentence; response_done is the "she's
+    // finished" signal. There's exactly one reply in flight at a time
+    // (the UI disables Send while waiting), so a single buffer/continuation
+    // pair is enough — no need for a queue.
+    private var replyBuffer = ""
+    private var replyContinuation: CheckedContinuation<String, Error>?
+    private static let replyTimeout: TimeInterval = 30
 
     private static let connectTimeout: TimeInterval = 2.5
 
@@ -77,11 +105,36 @@ final class LANClient: ObservableObject {
             socket.on(clientEvent: .disconnect) { [weak self] _, _ in
                 // A disconnect AFTER we already resolved true is a real
                 // "lost home mode" event, same distinction lan_client.js
-                // makes — nothing to do with it yet in this stage beyond
-                // flipping the published flag; chat streaming (speak_
-                // sentence/response_done/brain_source) wires in once
-                // there's a chat UI to feed it, see ../README.md.
+                // makes. Stage 4: if a reply was in flight, fail it instead
+                // of leaving the caller hanging — PandiaBrain.swift falls
+                // back to cloud on this exact error, mirroring app.js's
+                // sendText catch block.
                 self?.isConnected = false
+                self?.failPendingReply(with: .droppedMidReply)
+            }
+
+            // Stage 4 chat events — see lan_client.js's _wireSocket for the
+            // PWA equivalent. Selene streams her reply sentence-by-sentence
+            // via speak_sentence (same events her own browser UI gets) and
+            // signals completion with response_done; brain_source tells us
+            // which brain actually answered (local vs cloud) so the UI can
+            // show that instead of just "Home".
+            socket.on("speak_sentence") { [weak self] data, _ in
+                guard let self, let dict = data.first as? [String: Any],
+                      let sentence = dict["text"] as? String else { return }
+                self.replyBuffer += self.replyBuffer.isEmpty ? sentence : " \(sentence)"
+            }
+            socket.on("response_done") { [weak self] _, _ in
+                guard let self else { return }
+                let text = self.replyBuffer
+                self.replyBuffer = ""
+                self.replyContinuation?.resume(returning: text)
+                self.replyContinuation = nil
+            }
+            socket.on("brain_source") { [weak self] data, _ in
+                guard let self, let dict = data.first as? [String: Any],
+                      let source = dict["source"] as? String else { return }
+                self.lastBrainSource = source
             }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.connectTimeout) {
@@ -92,7 +145,33 @@ final class LANClient: ObservableObject {
         }
     }
 
+    /// Sends one message and awaits Selene's full reply, reassembled from
+    /// her speak_sentence stream (see socket wiring above) — the native
+    /// equivalent of app.js's sendText home-mode branch, just collapsed
+    /// into a single async call instead of a live-updating bubble, since
+    /// Stage 4 doesn't yet stream partial text into the UI (that's a
+    /// reasonable later polish pass, not a functional gap).
+    func send(_ text: String) async throws -> String {
+        guard let socket, isConnected else { throw LANClientError.notConnected }
+        replyBuffer = ""
+        return try await withCheckedThrowingContinuation { continuation in
+            self.replyContinuation = continuation
+            socket.emit("user_message", ["text": text])
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.replyTimeout) { [weak self] in
+                self?.failPendingReply(with: .timedOut)
+            }
+        }
+    }
+
+    private func failPendingReply(with error: LANClientError) {
+        guard let continuation = replyContinuation else { return }
+        replyContinuation = nil
+        replyBuffer = ""
+        continuation.resume(throwing: error)
+    }
+
     func disconnect() {
+        failPendingReply(with: .notConnected)
         socket?.removeAllHandlers()
         socket?.disconnect()
         socket = nil

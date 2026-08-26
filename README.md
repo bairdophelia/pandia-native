@@ -53,7 +53,7 @@ free Apple ID and installs it — ran green on the first try. `.github/
 workflows/build.yml` is driven by `project.yml` via XcodeGen (see that
 file's comment for why nobody hand-edits an `.xcodeproj` here).
 
-**Stage 2 — built, not yet installed/tested on a device:** a real Socket.IO
+**Stage 2 — confirmed working on a real device (2026-08-26):** a real Socket.IO
 LAN client (`Sources/LANClient.swift`), matching the PWA's
 `../PWA/js/lan_client.js` — connects to Selene over WiFi, gated by the same
 `SELENE_LAN_TOKEN`.
@@ -65,9 +65,13 @@ client-swift`'s exact config API (`.connectParams`, `.reconnects`,
 `.forceNew`, the `.on(clientEvent:)` handler shape) is based on that
 library's README and GitHub issues, not a compile I could verify myself (no
 Xcode/macOS in this environment). If CI fails, that file is where to look
-first.
+first. It did fail once, exactly there: a raw string literal on line 43 had
+its delimiters backwards (`#":\d+$#"` instead of `#":\d+$"#`) — an
+`unterminated string literal` compile error, fixed by swapping the closing
+delimiter. Confirmed on a real device afterward: the app connects to Selene
+over WiFi and shows "Home — connected to Selene."
 
-**Stage 3 — built, not yet installed/tested on a device:** away-mode cloud
+**Stage 3 — confirmed working on a real device (2026-08-26):** away-mode cloud
 fallback (`Sources/CloudBrain.swift`, plain `URLSession` + `JSONSerialization`
 — no third-party dependency, so meaningfully lower first-build risk than
 Stage 2's Socket.IO library), the personality prompt ported verbatim
@@ -80,12 +84,36 @@ message field, and a Send button) so this stage is independently testable
 too, same pattern as Stage 2. The consent-alert bridging in `ContentView
 .swift` (turning a SwiftUI alert's button tap into something `CloudBrain`
 can `await`) is this stage's least-certain spot, concurrency-wise — worth
-a look first if Stage 3 specifically fails to build where Stage 2 didn't.
+a look first if Stage 3 specifically fails to build where Stage 2 didn't. It
+didn't — built clean and confirmed on a real device: sent "hii" through the
+Test cloud message field and got back an in-character reply, "Hey, Fia.",
+consent alert and all.
 
-**Next, once Stages 2 and 3 are both confirmed against a device:** a real
-chat UI + SwiftData history tying LAN/cloud together with the same
-local-first-then-cloud fallback shape as `../PWA/js/brain.js`'s
-`awayModeReply`, then the on-device local model via MLX Swift — that last one gets its own
-stage specifically because its exact package/API surface is even less
-certain than Socket.IO's and is easiest to debug in isolation against an
-otherwise-working app.
+**Both LAN and cloud are now proven end-to-end on a real device — two of
+the three brains (LAN, cloud, local) working, not just compiling.** Local
+(MLX Swift, Stage 5 below) is the one still unproven.
+
+**Stage 4 — built, not yet installed/tested on a device:** a real chat
+screen (`ContentView.swift`, rewritten) with a persisted history
+(`ChatTurn.swift`, SwiftData — replaces the PWA's IndexedDB) and, the actual
+missing piece before now, `PandiaBrain.swift`: one function that decides
+home vs. cloud per message, the native counterpart to `../PWA/js/brain.js`'s
+`awayModeReply` + `app.js`'s mode check combined. Prefers LAN when
+`lan.isConnected`, falls back to cloud (same consent gate) on any LAN
+failure — including a message sent mid-connection-drop, same recovery
+`app.js`'s `sendText` does. `LANClient.swift` gained a `send(_:) async throws
+-> String` that reassembles Selene's `speak_sentence` stream into one reply
+and resolves on `response_done` (mirroring `lan_client.js`'s `onReply`
+buffering in `wireLanEvents`), plus a 30s timeout and a
+`brain_source`-driven `lastBrainSource` so the chat bubble can show "Selene ·
+home" vs. "cloud · Anthropic" instead of just "Home". LAN/cloud config moved
+out of the chat screen into `SettingsView.swift` (gear icon), same split the
+PWA has between its chat view and its own Settings panel. Least certain
+spot: `LANClient.send`'s continuation/timeout interplay with a live
+`disconnect` mid-reply — untested against a real dropped connection, only
+reasoned through.
+
+**Next, once Stage 4 is confirmed against a device:** the on-device local
+model via MLX Swift — gets its own stage specifically because its exact
+package/API surface is even less certain than Socket.IO's and is easiest to
+debug in isolation against an otherwise-working app.

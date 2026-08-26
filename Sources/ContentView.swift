@@ -1,82 +1,85 @@
 import SwiftUI
+import SwiftData
 
-// Stage 3: LAN connect (Stage 2) plus an independently-testable cloud
-// fallback path — a message field, a consent alert (same gate brain.js
-// enforces: no cloud call fires without an explicit yes when
-// requireCloudConsent is on), and the reply or error shown right on
-// screen. No chat history, no local model yet — see ../README.md's staged
-// plan. Not meant to be the permanent UI; gets replaced by a real chat
-// screen once all three brains (LAN, cloud, local) are proven individually.
+// Stage 4: the real chat screen, replacing Stage 2/3's two independent
+// test-button sections now that PandiaBrain.swift ties LAN and cloud
+// together. One Send button, one decision (home-first, cloud-fallback —
+// see PandiaBrain.reply), one persisted history via SwiftData (ChatTurn.swift,
+// replacing the PWA's IndexedDB). LAN/cloud config moved to SettingsView,
+// reached via the gear icon, same split the PWA has between its chat
+// screen and its Settings panel.
 struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \ChatTurn.timestamp) private var turns: [ChatTurn]
+
     @StateObject private var settings = PandiaSettings()
     @StateObject private var lan = LANClient()
 
-    @State private var isConnecting = false
-    @State private var lanFailed = false
-
-    @State private var testMessage = ""
-    @State private var cloudReply = ""
+    @State private var draft = ""
     @State private var isSending = false
+    @State private var showSettings = false
+    @State private var hasAttemptedInitialConnect = false
+
     @State private var pendingConsentProvider: CloudProvider?
+    @State private var consentResolver: ((Bool) -> Void)?
 
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "moon.stars.fill")
-                .font(.system(size: 40))
-                .foregroundStyle(.yellow)
-            Text("Pandia")
-                .font(.title2)
-                .bold()
+        NavigationStack {
+            VStack(spacing: 0) {
+                statusLine
+                    .padding(.top, 8)
 
-            statusLine
-
-            Form {
-                Section("Home connection") {
-                    TextField("PC address (e.g. 192.168.1.42:5000)", text: $settings.lanHost)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                    SecureField("LAN token", text: $settings.lanToken)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                    Button(isConnecting ? "Connecting…" : "Connect") { attemptConnect() }
-                        .disabled(isConnecting || settings.lanHost.isEmpty)
-                }
-
-                Section("Away mode — cloud fallback") {
-                    Picker("Provider", selection: $settings.cloudProvider) {
-                        Text("Anthropic (recommended)").tag(CloudProvider.anthropic)
-                        Text("Groq").tag(CloudProvider.groq)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 10) {
+                            ForEach(turns) { turn in
+                                ChatBubble(turn: turn)
+                                    .id(turn.persistentModelID)
+                            }
+                        }
+                        .padding()
                     }
-                    SecureField("API key", text: $settings.cloudApiKey)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                    Toggle("Ask before every cloud call", isOn: $settings.requireCloudConsent)
+                    .onChange(of: turns.count) {
+                        if let last = turns.last {
+                            withAnimation { proxy.scrollTo(last.persistentModelID, anchor: .bottom) }
+                        }
+                    }
                 }
 
-                Section("Test cloud message") {
-                    TextField("Say something…", text: $testMessage)
-                    Button(isSending ? "Sending…" : "Send via cloud") { attemptCloudSend() }
-                        .disabled(isSending || testMessage.isEmpty || settings.cloudApiKey.isEmpty)
-                    if !cloudReply.isEmpty {
-                        Text(cloudReply)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                inputBar
+            }
+            .navigationTitle("Pandia")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
                     }
                 }
             }
-        }
-        .padding(.top)
-        .alert(
-            "Send this to the cloud?",
-            isPresented: Binding(
-                get: { pendingConsentProvider != nil },
-                set: { if !$0 { pendingConsentProvider = nil } }
-            )
-        ) {
-            Button("Not now", role: .cancel) { resolveConsent(false) }
-            Button("Send it") { resolveConsent(true) }
-        } message: {
-            Text("Selene's not reachable, so this would go straight to \(pendingConsentProvider?.rawValue.capitalized ?? "the cloud") instead of staying on your phone.")
+            .sheet(isPresented: $showSettings) {
+                SettingsView(settings: settings, lan: lan, onConnect: attemptConnect)
+            }
+            .alert(
+                "Send this to the cloud?",
+                isPresented: Binding(
+                    get: { pendingConsentProvider != nil },
+                    set: { if !$0 { pendingConsentProvider = nil } }
+                )
+            ) {
+                Button("Not now", role: .cancel) { resolveConsent(false) }
+                Button("Send it") { resolveConsent(true) }
+            } message: {
+                Text("Selene's not reachable, so this would go straight to \(pendingConsentProvider?.rawValue.capitalized ?? "the cloud") instead of staying on your phone.")
+            }
+            .task {
+                guard !hasAttemptedInitialConnect else { return }
+                hasAttemptedInitialConnect = true
+                if !settings.lanHost.isEmpty {
+                    attemptConnect()
+                }
+            }
         }
     }
 
@@ -85,64 +88,109 @@ struct ContentView: View {
         if lan.isConnected {
             Label("Home — connected to Selene", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.teal)
-        } else if lanFailed {
-            Label("Couldn't reach Selene", systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .font(.footnote)
+        } else if !settings.lanHost.isEmpty {
+            Label("Away — using cloud fallback", systemImage: "cloud.fill")
+                .foregroundStyle(.secondary)
+                .font(.footnote)
         } else {
-            Text("Native build pipeline — online.")
+            Text("Set up Selene's address in Settings to enable home mode.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
     }
 
+    private var inputBar: some View {
+        HStack {
+            TextField("Message Pandia…", text: $draft, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(1...4)
+            Button {
+                send()
+            } label: {
+                Image(systemName: isSending ? "hourglass" : "arrow.up.circle.fill")
+                    .font(.system(size: 28))
+            }
+            .disabled(isSending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .padding()
+    }
+
     private func attemptConnect() {
-        isConnecting = true
-        lanFailed = false
         Task {
-            let ok = await lan.tryConnect(host: settings.lanHost, token: settings.lanToken)
-            isConnecting = false
-            lanFailed = !ok
+            _ = await lan.tryConnect(host: settings.lanHost, token: settings.lanToken)
         }
     }
 
-    private func attemptCloudSend() {
+    private func send() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isSending else { return }
+        draft = ""
         isSending = true
-        cloudReply = ""
-        let message = testMessage
+
+        let userTurn = ChatTurn(role: "user", text: text)
+        modelContext.insert(userTurn)
+
+        // Same 20-turn window brain.js's awayModeReply is handed for
+        // context — see app.js's sendText.
+        let history = turns.suffix(20).map { ChatMessage(role: $0.role, text: $0.text) }
+
         Task {
-            do {
-                let reply = try await CloudBrain.complete(
-                    history: [ChatMessage(role: "user", text: message)],
-                    provider: settings.cloudProvider,
-                    apiKey: settings.cloudApiKey,
-                    requireConsent: settings.requireCloudConsent,
-                    confirm: { provider in
-                        await withCheckedContinuation { continuation in
-                            Task { @MainActor in
-                                pendingConsentProvider = provider
-                                consentResolver = { continuation.resume(returning: $0) }
-                            }
+            let reply = await PandiaBrain.reply(
+                to: text,
+                history: history,
+                lan: lan,
+                settings: settings,
+                confirm: { provider in
+                    await withCheckedContinuation { continuation in
+                        Task { @MainActor in
+                            pendingConsentProvider = provider
+                            consentResolver = { continuation.resume(returning: $0) }
                         }
                     }
-                )
-                cloudReply = reply
-            } catch {
-                cloudReply = error.localizedDescription
-            }
+                }
+            )
+            let assistantTurn = ChatTurn(role: "assistant", text: reply.text, source: reply.source)
+            modelContext.insert(assistantTurn)
             isSending = false
         }
     }
-
-    // Bridges the alert's Yes/No taps back into CloudBrain's `confirm`
-    // async closure: CloudBrain suspends on withCheckedContinuation until
-    // resolveConsent() below calls this, which only happens from a button
-    // tap. @State (not a plain var) so it survives this struct's view
-    // updates between the alert appearing and being answered.
-    @State private var consentResolver: ((Bool) -> Void)?
 
     private func resolveConsent(_ allowed: Bool) {
         pendingConsentProvider = nil
         consentResolver?(allowed)
         consentResolver = nil
+    }
+}
+
+private struct ChatBubble: View {
+    let turn: ChatTurn
+
+    var body: some View {
+        VStack(alignment: turn.role == "user" ? .trailing : .leading, spacing: 2) {
+            Text(turn.text)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(turn.role == "user" ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            if let source = turn.source {
+                Text(sourceLabel(source))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: turn.role == "user" ? .trailing : .leading)
+    }
+
+    // "lan"/"local" both mean Selene answered from home (local covers the
+    // case her own brain_source event refines it further); anything else
+    // is whichever cloud provider actually answered, or "error" when
+    // neither path could.
+    private func sourceLabel(_ source: String) -> String {
+        switch source {
+        case "lan", "local": return "Selene · home"
+        case "error": return "couldn't reach either brain"
+        default: return "cloud · \(source.capitalized)"
+        }
     }
 }

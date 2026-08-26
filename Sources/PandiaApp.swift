@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 @main
 struct PandiaApp: App {
@@ -6,5 +7,7 @@ struct PandiaApp: App {
         WindowGroup {
             ContentView()
         }
+        // Stage 4: persisted chat history — see ChatTurn.swift.
+        .modelContainer(for: ChatTurn.self)
     }
 }
