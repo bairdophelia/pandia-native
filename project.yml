@@ -10,6 +10,11 @@ options:
   deploymentTarget:
     iOS: "17.0"
 
+packages:
+  SocketIO:
+    url: https://github.com/socketio/socket.io-client-swift
+    from: 16.1.0
+
 targets:
   Pandia:
     type: application
@@ -31,3 +36,5 @@ targets:
         # deliberately unsigned.
         CODE_SIGNING_ALLOWED: NO
         CODE_SIGNING_REQUIRED: NO
+    dependencies:
+      - package: SocketIO

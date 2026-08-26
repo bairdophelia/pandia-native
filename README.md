@@ -47,21 +47,44 @@ instead of through a browser engine.
 
 ## Status
 
-Stage 1: a deliberately minimal SwiftUI app (`Sources/`) plus the
-GitHub Actions build (`.github/workflows/build.yml`, driven by
-`project.yml` via XcodeGen — see that file's comment for why nobody hand-edits
-an `.xcodeproj` here) whose only job is to prove the whole pipeline works:
-push → GitHub's Mac hardware builds an unsigned `.ipa` → AltServer signs it
-with your free Apple ID and installs it → the phone shows "Pandia — native
-build pipeline online."
+**Stage 1 — confirmed working (2026-08-23):** the minimal build pipeline —
+push → GitHub Actions builds an unsigned `.ipa` → AltServer signs it with a
+free Apple ID and installs it — ran green on the first try. `.github/
+workflows/build.yml` is driven by `project.yml` via XcodeGen (see that
+file's comment for why nobody hand-edits an `.xcodeproj` here).
 
-Once that's confirmed working end to end, the real features get layered in
-on top of a known-good baseline, roughly in this order: home-mode LAN chat
-to Selene (needs `../app.py`'s `on_connect` fix, already applied — see its
-comment on why `socket.io-client-swift` needs the token as a query param,
-not the protocol auth payload the PWA uses), away-mode cloud fallback
-(Anthropic/Groq, mirroring `../js/brain.js`), then the on-device local model
-via MLX Swift — that last one gets its own stage specifically because its
-exact package/API surface is the least certain of everything here and is
-easiest to debug in isolation against a working app rather than mixed in
-with everything else failing at once.
+**Stage 2 — built, not yet installed/tested on a device:** a real Socket.IO
+LAN client (`Sources/LANClient.swift`), matching the PWA's `js/lan_client.js`
+— connects to Selene over WiFi, gated by the same `SELENE_LAN_TOKEN`.
+`ContentView.swift` now has a bare-bones settings form (PC address, LAN
+token) and a Connect button so this stage is independently testable before
+any chat UI exists. `Sources/LANClient.swift`'s own top comment flags it as
+the file most likely to need a fix on the first real build — `socket.io-
+client-swift`'s exact config API (`.connectParams`, `.reconnects`,
+`.forceNew`, the `.on(clientEvent:)` handler shape) is based on that
+library's README and GitHub issues, not a compile I could verify myself (no
+Xcode/macOS in this environment). If CI fails, that file is where to look
+first.
+
+**Stage 3 — built, not yet installed/tested on a device:** away-mode cloud
+fallback (`Sources/CloudBrain.swift`, plain `URLSession` + `JSONSerialization`
+— no third-party dependency, so meaningfully lower first-build risk than
+Stage 2's Socket.IO library), the personality prompt ported verbatim
+(`Sources/PersonalityPrompt.swift`, hand-copied from `../js/brain.js` — no
+shared import across the Swift/JS boundary, same caveat that file's own
+comment documents about staying in sync manually), and the same consent gate
+the PWA enforces before any cloud call. `ContentView.swift` now has a "Test
+cloud message" section (provider picker, API key field, consent toggle, a
+message field, and a Send button) so this stage is independently testable
+too, same pattern as Stage 2. The consent-alert bridging in `ContentView
+.swift` (turning a SwiftUI alert's button tap into something `CloudBrain`
+can `await`) is this stage's least-certain spot, concurrency-wise — worth
+a look first if Stage 3 specifically fails to build where Stage 2 didn't.
+
+**Next, once Stages 2 and 3 are both confirmed against a device:** a real
+chat UI + SwiftData history tying LAN/cloud together with the same
+local-first-then-cloud fallback shape as `../js/brain.js`'s `awayModeReply`,
+then the on-device local model via MLX Swift — that last one gets its own
+stage specifically because its exact package/API surface is even less
+certain than Socket.IO's and is easiest to debug in isolation against an
+otherwise-working app.
