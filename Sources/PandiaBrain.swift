@@ -25,10 +25,15 @@ enum PandiaBrain {
         settings: PandiaSettings,
         confirm: (@Sendable (CloudProvider) async -> Bool)?
     ) async -> Reply {
-        if lan.isConnected {
+        // LANClient is @MainActor-isolated (see LANClient.swift), and this
+        // function isn't — it's called from ContentView's MainActor context,
+        // but the function body itself has no actor of its own, so reading
+        // across into LANClient's properties needs an explicit hop either
+        // way. Cheap: these are just property reads, not real async work.
+        if await lan.isConnected {
             do {
                 let replyText = try await lan.send(text)
-                return Reply(text: replyText, source: lan.lastBrainSource ?? "lan")
+                return Reply(text: replyText, source: await lan.lastBrainSource ?? "lan")
             } catch {
                 // Falls through to cloud below — same recovery app.js's
                 // sendText does when lan.sendMessage throws mid-send
