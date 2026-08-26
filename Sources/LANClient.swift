@@ -40,7 +40,7 @@ final class LANClient: ObservableObject {
         // explicit port is valid syntax but silently tries port 80 (nothing
         // listening there) instead of erroring loudly — default to
         // Selene's Flask-SocketIO port if none was given.
-        let hasPort = host.range(of: #":\d+$#", options: .regularExpression) != nil
+        let hasPort = host.range(of: #":\d+$"#, options: .regularExpression) != nil
         let hostWithPort = hasPort ? host : "\(host):5000"
         guard let url = URL(string: "http://\(hostWithPort)") else { return false }
 
