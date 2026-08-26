@@ -34,3 +34,22 @@ extension Color {
     /// --danger-red — reused here only for "couldn't reach anything."
     static let seleneDangerRed = Color(red: 0xE0 / 255, green: 0x5A / 255, blue: 0x44 / 255)
 }
+
+// SwiftUI's own colors (.red, .teal, etc.) are reachable as bare
+// `.foregroundStyle(.teal)` shorthand because Apple declares them twice:
+// once as `Color` statics (for `Color`-typed contexts like `.background`),
+// and again as `ShapeStyle` statics constrained to `Self == Color` (for
+// generic-ShapeStyle contexts like `.foregroundStyle`/`.tint`). The Color
+// extension above only covers the first — CI caught the gap
+// (2026-08-26): `.foregroundStyle(.seleneTeal)` failed to compile with
+// "type 'ShapeStyle' has no member 'seleneTeal'", since `.foregroundStyle`
+// infers its type from a *generic* ShapeStyle, not from Color directly.
+// This mirrors Apple's own second declaration to close that gap.
+extension ShapeStyle where Self == Color {
+    static var seleneInk: Color { .seleneInk }
+    static var seleneTeal: Color { .seleneTeal }
+    static var seleneGold: Color { .seleneGold }
+    static var seleneLilac: Color { .seleneLilac }
+    static var seleneOrange: Color { .seleneOrange }
+    static var seleneDangerRed: Color { .seleneDangerRed }
+}

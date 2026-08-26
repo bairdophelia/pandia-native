@@ -232,6 +232,21 @@ latitude/longitude ellipses at low opacity — sitting behind the crescent
 moon, echoing sphere.js's wireframe shell without literally copying
 Selene's animated 3D scene (that's her signature, not Pandia's).
 
+*CI caught a real compile bug in this round:* `.foregroundStyle(.seleneTeal)`
+(and `.seleneDangerRed`) failed with `type 'ShapeStyle' has no member
+'seleneTeal'`. Reason: `Color`'s own `.teal`/`.red`/etc. shorthand only
+works in `.foregroundStyle`/`.tint` calls because Apple declares those
+colors *twice* — once as plain `Color` statics, and again as `ShapeStyle`
+statics constrained to `Self == Color` (`.foregroundStyle` infers its
+argument type from a generic `ShapeStyle`, not from `Color` directly, so
+a `Color`-only static isn't visible there). `Theme.swift`'s original pass
+only added the first declaration. Fixed by adding the matching
+`extension ShapeStyle where Self == Color { static var seleneTeal: Color ... }`
+block, mirroring Apple's own pattern — a one-file fix, `ContentView.swift`/
+`SettingsView.swift` needed no changes. (A third reported error, in
+`SettingsView.swift`'s `Section` call, was a type-checker cascade from
+this same root cause, not a separate bug — it cleared once this fixed.)
+
 **Stage 6 — syncing away-mode turns back into Selene's memory
 (2026-08-26):** closes a real gap flagged during testing: anything said to
 Pandia while away (on-device model or cloud) previously stayed local to
