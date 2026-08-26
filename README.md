@@ -4,11 +4,11 @@
 native iOS rebuild of Pandia, Selene's phone-side companion.
 
 This lives at `C:\AI\pandia\native` — a separate, self-contained codebase
-from the Progressive Web App one level up (`C:\AI\pandia`'s `index.html`,
-`js/`, `css/`), not a replacement (yet). The PWA stays put and keeps working
-while this one gets built out — see `..\PANDIA.md` for the full background
-on Pandia's relationship to Selene (`C:\AI\selene`) and Nyx, the character
-both share.
+from the Progressive Web App, a sibling folder at `C:\AI\pandia\PWA`
+(`index.html`, `js/`, `css/`), not a replacement (yet). The PWA stays put
+and keeps working while this one gets built out — see `..\PWA\PANDIA.md`
+for the full background on Pandia's relationship to Selene (`C:\AI\selene`)
+and Nyx, the character both share.
 
 ## Why a native rebuild
 
@@ -26,10 +26,10 @@ instead of through a browser engine.
   plain Swift Package Manager dependency, no extra native toolchain.
 - **SwiftData** for local chat history (replaces the PWA's IndexedDB).
 - A Socket.IO-compatible client for home-mode LAN chat with Selene, mirroring
-  the PWA's `lan_client.js`.
+  the PWA's `../PWA/js/lan_client.js`.
 - Direct HTTPS calls to Anthropic (recommended) / Groq for away-mode cloud
-  fallback, mirroring the PWA's `brain.js` — same consent-gate behavior
-  before any cloud call.
+  fallback, mirroring the PWA's `../PWA/js/brain.js` — same consent-gate
+  behavior before any cloud call.
 
 ## Build & install — no Mac owned, $0 cost
 
@@ -54,8 +54,9 @@ workflows/build.yml` is driven by `project.yml` via XcodeGen (see that
 file's comment for why nobody hand-edits an `.xcodeproj` here).
 
 **Stage 2 — built, not yet installed/tested on a device:** a real Socket.IO
-LAN client (`Sources/LANClient.swift`), matching the PWA's `js/lan_client.js`
-— connects to Selene over WiFi, gated by the same `SELENE_LAN_TOKEN`.
+LAN client (`Sources/LANClient.swift`), matching the PWA's
+`../PWA/js/lan_client.js` — connects to Selene over WiFi, gated by the same
+`SELENE_LAN_TOKEN`.
 `ContentView.swift` now has a bare-bones settings form (PC address, LAN
 token) and a Connect button so this stage is independently testable before
 any chat UI exists. `Sources/LANClient.swift`'s own top comment flags it as
@@ -70,8 +71,8 @@ first.
 fallback (`Sources/CloudBrain.swift`, plain `URLSession` + `JSONSerialization`
 — no third-party dependency, so meaningfully lower first-build risk than
 Stage 2's Socket.IO library), the personality prompt ported verbatim
-(`Sources/PersonalityPrompt.swift`, hand-copied from `../js/brain.js` — no
-shared import across the Swift/JS boundary, same caveat that file's own
+(`Sources/PersonalityPrompt.swift`, hand-copied from `../PWA/js/brain.js` —
+no shared import across the Swift/JS boundary, same caveat that file's own
 comment documents about staying in sync manually), and the same consent gate
 the PWA enforces before any cloud call. `ContentView.swift` now has a "Test
 cloud message" section (provider picker, API key field, consent toggle, a
@@ -83,8 +84,8 @@ a look first if Stage 3 specifically fails to build where Stage 2 didn't.
 
 **Next, once Stages 2 and 3 are both confirmed against a device:** a real
 chat UI + SwiftData history tying LAN/cloud together with the same
-local-first-then-cloud fallback shape as `../js/brain.js`'s `awayModeReply`,
-then the on-device local model via MLX Swift — that last one gets its own
+local-first-then-cloud fallback shape as `../PWA/js/brain.js`'s
+`awayModeReply`, then the on-device local model via MLX Swift — that last one gets its own
 stage specifically because its exact package/API surface is even less
 certain than Socket.IO's and is easiest to debug in isolation against an
 otherwise-working app.
