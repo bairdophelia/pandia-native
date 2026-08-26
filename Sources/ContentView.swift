@@ -48,7 +48,7 @@ struct ContentView: View {
 
                 inputBar
             }
-            .navigationTitle("Pandia")
+            .navigationTitle("P.A.N.D.I.A.")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -182,13 +182,17 @@ private struct ChatBubble: View {
         .frame(maxWidth: .infinity, alignment: turn.role == "user" ? .trailing : .leading)
     }
 
-    // "lan"/"local" both mean Selene answered from home (local covers the
-    // case her own brain_source event refines it further); anything else
-    // is whichever cloud provider actually answered, or "error" when
-    // neither path could.
+    // "lan"/"local" both mean Selene answered from home (her own
+    // brain_source event refines "lan" to "local" when SHE used her PC-side
+    // model — see PandiaBrain.swift's Reply.source doc comment). "device"
+    // is a different thing: this phone's own on-device model (Stage 5,
+    // LocalBrain.swift) answering with no PC involved at all. Anything
+    // else is whichever cloud provider actually answered, or "error" when
+    // nothing could.
     private func sourceLabel(_ source: String) -> String {
         switch source {
         case "lan", "local": return "Selene · home"
+        case "device": return "this phone · offline"
         case "error": return "couldn't reach either brain"
         default: return "cloud · \(source.capitalized)"
         }

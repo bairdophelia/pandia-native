@@ -42,6 +42,24 @@ struct SettingsView: View {
                     }
                 }
 
+                Section {
+                    Toggle("Use on-device model when away", isOn: $settings.useLocalModel)
+                    if settings.useLocalModel {
+                        Text(settings.localModelId)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("On-device model (experimental)")
+                } footer: {
+                    // Stage 5, LocalBrain.swift — tried between LAN and
+                    // cloud (see PandiaBrain.swift). Off by default: the
+                    // first message after turning this on downloads the
+                    // model (several hundred MB) before it can answer, so
+                    // worth doing on WiFi the first time.
+                    Text("Answers on this phone with no internet needed, once the model's downloaded. First use downloads it — do that on WiFi. Falls back to cloud if it's not ready yet.")
+                }
+
                 Section("Away mode — cloud fallback") {
                     Picker("Provider", selection: $settings.cloudProvider) {
                         Text("Anthropic (recommended)").tag(CloudProvider.anthropic)

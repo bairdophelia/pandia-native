@@ -113,7 +113,41 @@ spot: `LANClient.send`'s continuation/timeout interplay with a live
 `disconnect` mid-reply — untested against a real dropped connection, only
 reasoned through.
 
-**Next, once Stage 4 is confirmed against a device:** the on-device local
-model via MLX Swift — gets its own stage specifically because its exact
-package/API surface is even less certain than Socket.IO's and is easiest to
-debug in isolation against an otherwise-working app.
+**Stage 4 — confirmed working on a real device (2026-08-26):** LAN and
+cloud both proven live in the new chat screen, consent gate included.
+
+**Stage 5 — built, not yet installed/tested on a device:** the on-device
+local model, via [MLX Swift LM](https://github.com/ml-explore/mlx-swift-lm)
+(`Sources/LocalBrain.swift`) — the actual reason this native rebuild
+exists in the first place (see "Why a native rebuild" above). Tried
+between LAN and cloud in `PandiaBrain.swift`, matching the PWA's own
+precedence exactly (`brain.js`'s `awayModeReply`: local before cloud, once
+you're not on LAN). Off by default in Settings — turning it on downloads
+the model (mlx-community's `Llama-3.2-1B-Instruct-4bit`, ~0.5GB, chosen for
+being small enough for a phone) the first time it's used.
+
+**BY FAR the least certain file in this project so far.** Every other
+stage's riskiest file was built by reading source that already existed in
+this repo or the PWA — an actual compile error to fix (Stage 2), an actual
+actor-isolation rule to apply (Stage 4). `LocalBrain.swift` is built from
+`mlx-swift-lm`'s own docs, fetched via web search rather than read
+directly, because that library split out of `mlx-swift-examples` recently
+(v3, with breaking changes to how it handles tokenizers/downloading) — the
+docs describe a `LLMModelFactory.shared.loadContainer(configuration:)` →
+`ChatSession(container)` → `session.respond(to:)` shape, cross-checked
+across three separate fetches before settling on it, but never a compile I
+could verify myself. If CI fails here, check in this order: (1) the two
+product names in `project.yml` (`MLXLLM`, `MLXLMCommon`) against whatever
+`mlx-swift-lm`'s actual `Package.swift` exposes today — package contents
+can drift from what I found; (2) `LLMModelFactory`/`ChatSession`'s exact
+method names and signatures against whatever the compiler says exists; (3)
+whether `.init(id: modelId)` is really how the config type mlx-swift-lm
+expects gets built, since I inferred that from a doc snippet rather than a
+type declaration. None of that is a sign anything upstream (LAN, cloud,
+chat UI) broke — those are proven independently of this file.
+
+Deliberately left out of this first pass, to keep the guessed surface
+small: download-progress reporting (shows nothing but the normal "sending"
+spinner while the model downloads) and response streaming (waits for the
+whole reply like cloud does, no token-by-token). Both are reasonable
+follow-ups once this compiles and runs at all.

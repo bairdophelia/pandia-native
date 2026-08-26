@@ -14,6 +14,13 @@ packages:
   SocketIO:
     url: https://github.com/socketio/socket.io-client-swift
     from: 16.1.0
+  # Stage 5 — on-device inference (see Sources/LocalBrain.swift's doc
+  # comment for the full uncertainty note). This repo is the current home
+  # of MLXLLM/MLXLMCommon as of the library's v3 split from
+  # mlx-swift-examples; version pin taken from its own README.
+  MLXSwiftLM:
+    url: https://github.com/ml-explore/mlx-swift-lm
+    from: 3.31.3
 
 targets:
   Pandia:
@@ -38,3 +45,7 @@ targets:
         CODE_SIGNING_REQUIRED: NO
     dependencies:
       - package: SocketIO
+      - package: MLXSwiftLM
+        product: MLXLLM
+      - package: MLXSwiftLM
+        product: MLXLMCommon

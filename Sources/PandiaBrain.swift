@@ -1,20 +1,22 @@
 import Foundation
 
-// Stage 4: the piece that was missing before this stage — a single place
+// Stage 4 built the piece that was missing before it — a single place
 // that decides LAN vs cloud, the native counterpart to ../PWA/js/brain.js's
 // awayModeReply plus app.js's sendText mode check combined into one call.
-// Until this existed, LANClient and CloudBrain were two independent brains
-// a test button called directly; this ties them together the same
-// local(home)-first-then-cloud shape the PWA uses, with "home" (LAN) taking
-// the place the PWA gives the on-device local model, since Stage 5's MLX
-// model doesn't exist yet — see ../README.md's staged plan.
+// Stage 5 slots the on-device model (LocalBrain.swift) in between the two,
+// matching the PWA's own precedence exactly: LAN (home) first, then the
+// on-device local model, then cloud — see brain.js's awayModeReply, which
+// is "local-then-cloud" for the same reason once you're not on LAN.
 enum PandiaBrain {
     struct Reply {
         let text: String
-        /// "lan", refined to whatever Selene's own brain_source event says
-        /// once one arrives ("local" or her cloud provider) — or a
-        /// CloudProvider rawValue when this device went straight to cloud,
-        /// or "error" when neither path could answer at all.
+        /// "lan" (refined to whatever Selene's own brain_source event says
+        /// once one arrives — "local" or her cloud provider — note that's
+        /// SELENE's local model, on the PC), "device" (this phone's own
+        /// on-device model, see LocalBrain.swift — deliberately not
+        /// "local" too, so the two can't collide), a CloudProvider
+        /// rawValue when it went straight to cloud, or "error" when
+        /// nothing could answer at all.
         let source: String
     }
 
@@ -35,10 +37,23 @@ enum PandiaBrain {
                 let replyText = try await lan.send(text)
                 return Reply(text: replyText, source: await lan.lastBrainSource ?? "lan")
             } catch {
-                // Falls through to cloud below — same recovery app.js's
-                // sendText does when lan.sendMessage throws mid-send
-                // (connection dropped between the status pill saying
-                // "Home" and the message actually going out).
+                // Falls through to local/cloud below — same recovery
+                // app.js's sendText does when lan.sendMessage throws
+                // mid-send (connection dropped between the status pill
+                // saying "Home" and the message actually going out).
+            }
+        }
+
+        if settings.useLocalModel {
+            do {
+                let replyText = try await LocalBrain.shared.reply(to: text, modelId: settings.localModelId)
+                return Reply(text: replyText, source: "device")
+            } catch {
+                // Falls through to cloud below — same recovery brain.js's
+                // awayModeReply does when the on-device model throws (not
+                // supported / failed to load / generation error). See
+                // LocalBrain.swift's doc comment for why this stage's error
+                // cases are broader and less certain than LAN's or cloud's.
             }
         }
 
