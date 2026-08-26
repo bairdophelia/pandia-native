@@ -147,11 +147,22 @@ major version. That needed three more packages (`MLXHuggingFace`,
 see `project.yml`) and three more imports, since the macros expand to code
 that references those modules' types.
 
-If CI fails again, the pattern so far has held twice: the compiler's own
-error message names the real signature, and the fix is mechanical from
-there — that's the first thing to check in the new log, not a sign
-anything upstream (LAN, cloud, chat UI) broke, since those are proven
-independently of this file.
+*Round 3* (current) hit a different kind of wall — not a wrong API, but a
+process one: `Macro "MLXHuggingFaceMacros" from package "mlx-swift-lm" must
+be enabled before it can be used`. SPM normally handles that with an
+interactive "trust this macro plugin" dialog the first time a package uses
+one; there's no Xcode GUI in CI to click through. Fixed in
+`.github/workflows/build.yml` by adding `-skipMacroValidation` to the
+`xcodebuild archive` call — the documented workaround for exactly this
+(same fix people use for Xcode Cloud, which hits the identical wall for
+the identical reason). Nothing in `LocalBrain.swift` itself changed for
+this round.
+
+If CI fails again, the pattern so far has held twice on the API-shape
+front: the compiler's own error message names the real signature, and the
+fix is mechanical from there — that's the first thing to check in a new
+log, not a sign anything upstream (LAN, cloud, chat UI) broke, since those
+are proven independently of this file.
 
 Deliberately left out of this first pass, to keep the guessed surface
 small: download-progress reporting (shows nothing but the normal "sending"
