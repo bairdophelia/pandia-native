@@ -46,6 +46,21 @@ import Tokenizers
 // Both are reasonable follow-ups once this compiles and runs at all, not
 // blockers for a first working version — same sequencing Stage 4 used
 // (get LAN/cloud talking first, live-streaming chat bubbles later).
+//
+// Bug fix (2026-08-28): first real on-device reply came back as a flat
+// "I'm an artificial intelligence model..." — correct behavior for this
+// code, since ChatSession was created with no persona at all. CloudBrain
+// .swift passes `pandiaSystemPrompt` as the system message for both cloud
+// providers (PersonalityPrompt.swift); this file just never did the local
+// equivalent. Fixed via ChatSession's own `instructions:` parameter —
+// confirmed against mlx-swift-lm's actual ChatSession.swift source, not
+// guessed — which is documented as "optional system instructions for the
+// session," exactly this use. Worth knowing: PersonalityPrompt.swift's
+// prompt was written for a full-size cloud model; a tiny on-device model
+// like the default 1B may follow it far less faithfully. Feeding it the
+// same instructions anyway is still the right default — same reasoning
+// the PWA's brain.js already established ("same personality as Selene
+// for now") — a worse imitation beats no persona at all.
 actor LocalBrain {
     static let shared = LocalBrain()
 
@@ -70,7 +85,7 @@ actor LocalBrain {
             configuration: .init(id: modelId)
         )
         print("[Pandia] LocalBrain: container loaded")
-        let newSession = ChatSession(container)
+        let newSession = ChatSession(container, instructions: pandiaSystemPrompt)
         session = newSession
         loadedModelId = modelId
         return newSession

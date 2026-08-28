@@ -348,4 +348,58 @@ Two-part fix:
    (and structurally can't) catch a migration that "succeeds" but still
    leaves autosave broken the way this one did, which is why part 1
    above is still the actual fix for what's on your phone right now.
-only when the on-device model is off entirely.
+
+**Confirmed working (2026-08-28):** after a reinstall to clear the wedged
+store, both bubbles now appear and persist correctly — the fix above was
+right. Next thing that showed up, from an actual on-device reply: flat,
+generic "I'm an artificial intelligence model..." text, nothing like
+Selene's voice. Root cause was much simpler than the storage bug —
+`LocalBrain.swift`'s `ChatSession` was created with no persona at all.
+`CloudBrain.swift` passes `pandiaSystemPrompt` (`PersonalityPrompt.swift`)
+as the system message for both cloud providers; the on-device path just
+never had an equivalent. Fixed via `ChatSession`'s own `instructions:`
+parameter — confirmed against `mlx-swift-lm`'s actual `ChatSession.swift`
+source rather than guessed, documented there as "optional system
+instructions for the session," exactly this use.
+
+Worth knowing: `pandiaSystemPrompt` was written with a full-size cloud
+model in mind; a tiny on-device model (the default is a 1B-parameter
+Llama) is much less likely to follow it faithfully — expect a rougher
+approximation of the voice on-device than from Anthropic/Groq. Feeding it
+the same instructions anyway is still the right default (same call the
+PWA's `brain.js` already made: "same personality as Selene for now") — a
+weaker imitation beats no persona at all, and it's an easy thing to
+revisit with a shorter, on-device-specific prompt later if the full one
+proves too much for a 1B model to hold onto.
+
+**On-device model upgraded, and made switchable in Settings
+(2026-08-28):** Fia's ask, right after confirming the personality fix
+above actually worked on a 1B model — a natural next question once it's
+clearly working at all. Default bumped from Llama-3.2-1B-Instruct-4bit to
+**Llama-3.2-3B-Instruct-4bit** (`Settings.swift`) — deliberately the same
+architecture family, not a jump to a different one. Reasoning: this
+stage's whole history (see the four CI rounds above) is evidence that
+getting mlx-swift-lm to load a NEW model *family* correctly is real,
+nontrivial work — LLMModelFactory has to explicitly support the
+architecture. Staying within Llama 3.2 means the 3B is essentially
+guaranteed to load the same way the 1B already does, confirmed working
+end-to-end on-device today; only the parameter count (and therefore
+quality, speed, and the ~1.8GB vs. ~0.7GB download) changes.
+
+`SettingsView.swift` also gained an actual picker for this — until now
+`localModelId` was a real, persisted, per-user setting in
+`Settings.swift`, but the UI only ever showed it as read-only `Text`;
+changing it meant editing code. Now: a picker with the 1B and 3B options
+plus "Custom…", which reveals a plain text field for any other
+`mlx-community` Hugging Face repo id. Deliberately didn't pre-populate
+Custom with a curated list of newer/bigger options (Qwen3.5, Gemma 4,
+etc. all exist on `mlx-community` as of this writing) — those are
+different architectures from the one this project has actually gotten
+working, so trying one is a real experiment with a real chance of
+hitting a new round of the same compatibility issues Stage 5 went
+through, not a safe default to hand someone via a picker label. Custom
+is there for that experiment when wanted, opted into deliberately.
+Switching models (including via Custom) downloads that model's weights
+on first use after switching, same as the very first on-device use did —
+worth doing on WiFi, same reasoning, now called out in the section's
+footer text too.

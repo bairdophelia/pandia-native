@@ -54,7 +54,15 @@ final class PandiaSettings: ObservableObject {
     private static let useLocalModelKey = "useLocalModel"
     private static let localModelIdKey = "localModelId"
     private static let localOnlyModeKey = "localOnlyMode"
-    private static let defaultLocalModelId = "mlx-community/Llama-3.2-1B-Instruct-4bit"
+    // Upgraded (2026-08-28) from Llama-3.2-1B — same architecture family
+    // (so no new mlx-swift-lm compatibility risk, see LocalBrain.swift),
+    // ~3x the parameters, meaningfully better at actually following
+    // PersonalityPrompt.swift's instructions instead of answering as a
+    // flat generic assistant. ~1.8GB vs. ~0.7GB — still reasonable for a
+    // one-time WiFi download. Only affects fresh installs / never-set
+    // UserDefaults; SettingsView.swift now has a picker to change this
+    // (including back to 1B) without needing a rebuild.
+    private static let defaultLocalModelId = "mlx-community/Llama-3.2-3B-Instruct-4bit"
 
     init() {
         lanHost = UserDefaults.standard.string(forKey: Self.lanHostKey) ?? ""

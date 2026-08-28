@@ -15,6 +15,38 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isConnecting = false
 
+    // Bug fix / upgrade (2026-08-28): localModelId was already a free
+    // string in Settings.swift, but this view only ever showed it as
+    // read-only Text — no way to actually change it without editing code.
+    // Curated to two options rather than a long list: both are the SAME
+    // architecture family (Llama 3.2) as the 1B default this project has
+    // already confirmed loads and runs correctly end-to-end on Fia's
+    // phone, which matters — mlx-swift-lm has to explicitly support a
+    // model's architecture (see LocalBrain.swift's "highest-uncertainty
+    // file" doc comment on how much CI back-and-forth THIS family's
+    // support took to nail down). Reaching for a newer/different family
+    // (Qwen3.5, Gemma 4, etc.) is a reasonable later experiment, just a
+    // real risk of repeating that same round of trial-and-error — Custom
+    // is there for exactly that, opted into deliberately rather than
+    // stumbled into.
+    private static let presetModels: [(label: String, id: String)] = [
+        ("Llama 3.2 1B — fastest, lightest (~0.7 GB)", "mlx-community/Llama-3.2-1B-Instruct-4bit"),
+        ("Llama 3.2 3B — recommended, better replies (~1.8 GB)", "mlx-community/Llama-3.2-3B-Instruct-4bit"),
+    ]
+    private static let customTag = "custom"
+
+    private var modelSelection: Binding<String> {
+        Binding(
+            get: {
+                Self.presetModels.contains { $0.id == settings.localModelId } ? settings.localModelId : Self.customTag
+            },
+            set: { newValue in
+                guard newValue != Self.customTag else { return }
+                settings.localModelId = newValue
+            }
+        )
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -45,9 +77,19 @@ struct SettingsView: View {
                 Section {
                     Toggle("Use on-device model when away", isOn: $settings.useLocalModel)
                     if settings.useLocalModel {
-                        Text(settings.localModelId)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Picker("Model", selection: modelSelection) {
+                            ForEach(Self.presetModels, id: \.id) { model in
+                                Text(model.label).tag(model.id)
+                            }
+                            Text("Custom…").tag(Self.customTag)
+                        }
+                        .pickerStyle(.navigationLink)
+                        if modelSelection.wrappedValue == Self.customTag {
+                            TextField("mlx-community/… (Hugging Face repo id)", text: $settings.localModelId)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .font(.caption)
+                        }
                         Toggle("Local only — don't fall back to cloud", isOn: $settings.localOnlyMode)
                     }
                 } header: {
@@ -57,8 +99,11 @@ struct SettingsView: View {
                     // cloud (see PandiaBrain.swift). Off by default: the
                     // first message after turning this on downloads the
                     // model (several hundred MB) before it can answer, so
-                    // worth doing on WiFi the first time.
-                    Text("Answers on this phone with no internet needed, once the model's downloaded. First use downloads it — do that on WiFi. Normally falls back to cloud if it's not ready yet; turn on \"Local only\" to see the real error instead, useful while testing.")
+                    // worth doing on WiFi the first time. Switching models
+                    // (2026-08-28) downloads the new one the same way —
+                    // it's a different set of weights, not a config
+                    // tweak — so also worth doing that switch on WiFi.
+                    Text("Answers on this phone with no internet needed, once the model's downloaded. First use (and switching models) downloads it — do that on WiFi. Normally falls back to cloud if it's not ready yet; turn on \"Local only\" to see the real error instead, useful while testing.")
                 }
 
                 Section("Away mode — cloud fallback") {
