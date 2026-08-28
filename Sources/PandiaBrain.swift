@@ -54,10 +54,13 @@ enum PandiaBrain {
 
         var localError: String?
         if settings.useLocalModel {
+            print("[Pandia] trying on-device model \(settings.localModelId)…")
             do {
                 let replyText = try await LocalBrain.shared.reply(to: text, modelId: settings.localModelId)
+                print("[Pandia] on-device model answered (\(replyText.count) chars)")
                 return Reply(text: replyText, source: "device")
             } catch {
+                print("[Pandia] on-device model threw: \(error)")
                 // Normally falls through to cloud below — same recovery
                 // brain.js's awayModeReply does when the on-device model
                 // throws (not supported / failed to load / generation

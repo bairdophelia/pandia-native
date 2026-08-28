@@ -280,3 +280,72 @@ which already had this via `js/sync.js` + `js/lan_client.js`'s
 Selene's handler folds these in as history and, for turns worth
 remembering, into long-term memory — without asking her brain to
 re-answer, since these turns already have a reply.
+
+**Status banner bug fix (2026-08-28):** with "Local only — don't fall
+back to cloud" turned on in Settings, the away-mode banner at the top of
+the chat screen still read "Away — using cloud fallback" — misleading,
+and the exact opposite of what would actually happen on Send.
+`PandiaBrain.reply`'s precedence (LAN → on-device → cloud) was always
+correct — `localOnlyMode` genuinely skips cloud and surfaces the real
+on-device error instead (see `PandiaBrain.swift`'s own comment on that
+branch). The bug was purely cosmetic: `ContentView.swift`'s `statusLine`
+picked its text from just `lan.isConnected`/`settings.lanHost`, never
+looking at `settings.useLocalModel`/`settings.localOnlyMode` at all.
+Fixed by giving it two more states so the banner actually matches what a
+Send will do while away: "Away — on-device only" (local model on, cloud
+fallback off), "Away — on-device, cloud fallback" (local model on, cloud
+fallback still allowed), and the original "Away — using cloud fallback"
+only when the on-device model is off entirely.
+
+**Diagnostic logging added (2026-08-28):** while investigating the bug
+below, added `print("[Pandia] ...")` lines through `send()`
+(`ContentView.swift`), `PandiaBrain.reply` (its on-device branch
+specifically), and `LocalBrain.session(for:)` — visible in Xcode's
+console if this is ever run from a Mac with the phone attached. No
+behavior change, just makes the next investigation faster than pulling
+apart a screen recording frame by frame (see below).
+
+**Chat history silently not saving with the on-device model on
+(2026-08-28), diagnosed from a screen recording:** typing a message and
+hitting Send showed the send button flip to an hourglass for about 300ms
+and revert — the code was running and finishing — but NEITHER the user's
+own message NOR any reply ever appeared in the chat, for several seconds
+after. That's the important detail: `send()` inserts the user's
+`ChatTurn` into SwiftData *before* any LAN/local-model/cloud call even
+starts, so whatever's failing here can't be `PandiaBrain`'s reply logic —
+it has to be something about SwiftData itself not persisting or
+displaying that insert.
+
+Best-supported explanation: Stage 6 added `ChatTurn.synced`, a new field,
+on top of an on-device store that already had real chat history from
+earlier Stage 4/5 testing. `.modelContainer(for: ChatTurn.self)`
+(`PandiaApp.swift`) didn't crash, so container creation technically
+succeeded — but SwiftData's automatic lightweight migration for a
+schema change against a store with existing data is known to be less
+reliable than it sounds, and a background autosave silently failing on
+the old, now-mismatched rows can roll back the *entire* pending save —
+new inserts included — without ever surfacing an error. That fingerprint
+(runs fine, completes fine, nothing persists, no crash, no visible
+error) matches exactly.
+
+Two-part fix:
+1. **For the store already wedged on-device:** delete and reinstall the
+   app. That's the only thing that actually clears whatever's stuck in
+   the current store — the code fix below only prevents this from
+   happening again on the *next* schema change, it can't retroactively
+   repair data already on disk.
+2. **For every future schema change** (and there will be more — this is
+   the second time `ChatTurn` has grown a field): `PandiaApp.swift` now
+   builds its `ModelContainer` explicitly instead of using the
+   convenience `.modelContainer(for:)` form, and if creation throws, it
+   deletes the on-disk store (main file plus SQLite's `-wal`/`-shm`
+   sidecars, which can otherwise resurrect the old mismatched data on
+   next launch) and recreates it fresh rather than leaving something
+   half-migrated in place. Early-stage local chat history isn't worth
+   protecting at the cost of the app silently not working — turns worth
+   keeping long-term reach Selene through Stage 6's own sync anyway.
+   This makes container-creation *failures* self-healing; it doesn't
+   (and structurally can't) catch a migration that "succeeds" but still
+   leaves autosave broken the way this one did, which is why part 1
+   above is still the actual fix for what's on your phone right now.
+only when the on-device model is off entirely.

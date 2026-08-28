@@ -85,6 +85,13 @@ struct ContentView: View {
         }
     }
 
+    // Bug fix (2026-08-28): this used to always say "using cloud fallback"
+    // whenever away from home, regardless of settings.useLocalModel /
+    // localOnlyMode — misleading, since PandiaBrain.reply's actual
+    // precedence (LAN → on-device → cloud) already skips cloud entirely
+    // when localOnlyMode is on. The banner just never checked those
+    // settings before picking its text. Now it mirrors the real
+    // precedence so what it says matches what a Send will actually do.
     @ViewBuilder
     private var statusLine: some View {
         if lan.isConnected {
@@ -92,9 +99,19 @@ struct ContentView: View {
                 .foregroundStyle(.seleneTeal)
                 .font(.footnote)
         } else if !settings.lanHost.isEmpty {
-            Label("Away — using cloud fallback", systemImage: "cloud.fill")
-                .foregroundStyle(.seleneOrange)
-                .font(.footnote)
+            if settings.useLocalModel && settings.localOnlyMode {
+                Label("Away — on-device only", systemImage: "iphone")
+                    .foregroundStyle(.seleneLilac)
+                    .font(.footnote)
+            } else if settings.useLocalModel {
+                Label("Away — on-device, cloud fallback", systemImage: "iphone")
+                    .foregroundStyle(.seleneLilac)
+                    .font(.footnote)
+            } else {
+                Label("Away — using cloud fallback", systemImage: "cloud.fill")
+                    .foregroundStyle(.seleneOrange)
+                    .font(.footnote)
+            }
         } else {
             Text("Set up Selene's address in Settings to enable home mode.")
                 .font(.footnote)
@@ -167,7 +184,10 @@ struct ContentView: View {
 
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isSending else { return }
+        guard !text.isEmpty, !isSending else {
+            print("[Pandia] send() guard failed — text empty? \(text.isEmpty), already sending? \(isSending)")
+            return
+        }
         draft = ""
         isSending = true
 
@@ -176,12 +196,14 @@ struct ContentView: View {
         // LAN-answered turn (Selene lived through it) never needs syncing.
         let userTurn = ChatTurn(role: "user", text: text)
         modelContext.insert(userTurn)
+        print("[Pandia] inserted user turn, turns.count now \(turns.count) (may lag one render behind)")
 
         // Same 20-turn window brain.js's awayModeReply is handed for
         // context — see app.js's sendText.
         let history = turns.suffix(20).map { ChatMessage(role: $0.role, text: $0.text) }
 
         Task {
+            print("[Pandia] send() Task started, lan.isConnected=\(await lan.isConnected), useLocalModel=\(settings.useLocalModel), localOnlyMode=\(settings.localOnlyMode)")
             let reply = await PandiaBrain.reply(
                 to: text,
                 history: history,
@@ -196,6 +218,7 @@ struct ContentView: View {
                     }
                 }
             )
+            print("[Pandia] got reply — source=\(reply.source) localError=\(reply.localError ?? "nil") text=\(reply.text.prefix(80))")
             // "lan"/"local" both mean Selene answered directly — she was
             // there for it, so it's already part of her memory and never
             // needs folding back in. Anything else (on-device or cloud)
@@ -204,6 +227,7 @@ struct ContentView: View {
             userTurn.synced = livedThroughIt
             let assistantTurn = ChatTurn(role: "assistant", text: reply.text, source: reply.source, localError: reply.localError, synced: livedThroughIt)
             modelContext.insert(assistantTurn)
+            print("[Pandia] inserted assistant turn, turns.count now \(turns.count) (may lag one render behind)")
             isSending = false
         }
     }

@@ -63,11 +63,13 @@ actor LocalBrain {
         if let session, loadedModelId == modelId {
             return session
         }
+        print("[Pandia] LocalBrain: loading container for \(modelId) — first use downloads weights, can take a while")
         let container = try await LLMModelFactory.shared.loadContainer(
             from: #hubDownloader(),
             using: #huggingFaceTokenizerLoader(),
             configuration: .init(id: modelId)
         )
+        print("[Pandia] LocalBrain: container loaded")
         let newSession = ChatSession(container)
         session = newSession
         loadedModelId = modelId
