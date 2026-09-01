@@ -45,6 +45,18 @@ final class PandiaSettings: ObservableObject {
     @Published var localOnlyMode: Bool {
         didSet { UserDefaults.standard.set(localOnlyMode, forKey: Self.localOnlyModeKey) }
     }
+    /// Off by default — picks `pandiaLocalSystemPrompt`
+    /// (PersonalityPrompt.swift) instead of the full `pandiaSystemPrompt`,
+    /// matching what 2026-09-01's on-device testing found the default 1B
+    /// model can actually hold onto (see LocalBrain.swift). On: feeds the
+    /// same full prompt CloudBrain.swift uses to the on-device model
+    /// instead — Fia's ask, worth trying deliberately once a bigger model
+    /// (3B+) is actually reachable, now that LocalBrainProgress gives a
+    /// real progress bar instead of a bare hourglass during the load that
+    /// comes with it.
+    @Published var useFullPersonalityPrompt: Bool {
+        didSet { UserDefaults.standard.set(useFullPersonalityPrompt, forKey: Self.useFullPersonalityPromptKey) }
+    }
 
     private static let lanHostKey = "lanHost"
     private static let lanTokenKey = "lanToken"
@@ -54,6 +66,7 @@ final class PandiaSettings: ObservableObject {
     private static let useLocalModelKey = "useLocalModel"
     private static let localModelIdKey = "localModelId"
     private static let localOnlyModeKey = "localOnlyMode"
+    private static let useFullPersonalityPromptKey = "useFullPersonalityPrompt"
     // Reverted (2026-09-01) back to Llama-3.2-1B, after the brief 3B
     // default (2026-08-28) crashed on an actual device test — almost
     // certainly memory pressure: ~1.8GB of weights alone, before MLX's
@@ -79,5 +92,6 @@ final class PandiaSettings: ObservableObject {
         useLocalModel = UserDefaults.standard.object(forKey: Self.useLocalModelKey) as? Bool ?? false
         localModelId = UserDefaults.standard.string(forKey: Self.localModelIdKey) ?? Self.defaultLocalModelId
         localOnlyMode = UserDefaults.standard.object(forKey: Self.localOnlyModeKey) as? Bool ?? false
+        useFullPersonalityPrompt = UserDefaults.standard.object(forKey: Self.useFullPersonalityPromptKey) as? Bool ?? false
     }
 }

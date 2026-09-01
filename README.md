@@ -476,3 +476,74 @@ completely fresh download, the same recovery Stage 6's SwiftData bug
 needed for the same underlying reason: some code fixes can only prevent a
 problem going forward, not repair a store or a cache that's already bad
 on disk.
+
+**Real download progress added (2026-09-01), Fia's direct ask right
+after hitting the exact gap this file's own notes had flagged since
+Stage 5:** waiting on an on-device model download showed nothing but the
+normal hourglass, with no way to tell "downloading normally, on a slow
+connection" apart from "hung." `LLMModelFactory.shared.loadContainer`
+already takes a `progressHandler: @Sendable @escaping (Progress) ->
+Void` — present in the API since Stage 5, just never wired up (see that
+stage's "deliberately minimal" list above).
+
+`LocalBrain.swift` now has a small `LocalBrainProgress` (`ObservableObject`,
+`@Published var fractionCompleted: Double?`) that the progress handler
+feeds. Deliberately kept boring on the concurrency side: rather than
+making the bridge `@MainActor` and reasoning through whether a
+`@Sendable` closure fired from inside `loadContainer`'s own internals is
+allowed to hop into a global actor, it's a plain class with
+`DispatchQueue.main.async` inside otherwise ordinary methods — the same
+pre-structured-concurrency pattern that's been safe for bridging
+arbitrary-thread callbacks into SwiftUI for years. This file already
+carries more guessed API surface than anywhere else in the project; this
+addition tries to add zero *additional* uncertainty on top of that,
+rather than also gambling on actor-isolation subtleties.
+
+`ContentView.swift` observes `LocalBrainProgress.shared` directly and
+renders a `ProgressView` + percentage right above the input bar whenever
+a load's in flight — invisible the rest of the time (LAN and cloud sends
+never touch it, so the normal chat flow is unchanged). One wrinkle
+called out in `LocalBrain.swift`'s own comment: `fractionCompleted`
+tracks bytes downloaded, not "ready to chat" — it sits at/near 1.0 for a
+real stretch afterward while MLX loads the weights into memory, so the
+UI swaps to a distinct "Loading model into memory…" message once it
+crosses ~99.9%, rather than leaving a bar that looks stuck at 100%.
+
+**Full personality prompt made an opt-in toggle (2026-09-01), Fia's ask
+right after confirming 3B answers well on-device with the condensed
+prompt:** now that a real progress bar means a load reads as "in
+progress" instead of "stuck," worth trying the same full
+`pandiaSystemPrompt` cloud gets, deliberately, on a model big enough to
+maybe hold it. Added `PandiaSettings.useFullPersonalityPrompt` (off by
+default — the condensed prompt is still what's confirmed working on 1B)
+and a matching toggle in `SettingsView.swift`'s on-device section, footer
+updated to say plainly it's worth trying on 3B+, not recommended on 1B.
+
+`LocalBrain.swift` needed a small restructure to support this without
+forcing an unnecessary reload: it now caches the `ModelContainer` and the
+`ChatSession` separately, keyed on `(modelId, useFullPrompt)`. A modelId
+change still does the full network-aware load with the progress bar and
+timeout; a prompt-choice change alone (same modelId) reuses the
+already-loaded container and just builds a fresh `ChatSession` from it —
+cheap, instant, no network, no progress bar needed for that part. Without
+this split, flipping the toggle would have re-triggered the entire
+loadContainer path (and its download check) just to change which string
+gets passed as `instructions:`.
+
+**Selene's own desktop side, not Pandia:** while testing, Fia hit Selene
+(`../selene`) answering "who are you" as "a virtual assistant developed
+by Alibaba Cloud" — Nyx's character dropping entirely. Traced to a
+documented Qwen-specific quirk (Selene's local model is `qwen3:8b` via
+Ollama, `SELENE_LOCAL_FIRST` on by default): Qwen models have their real
+identity trained in hard enough that direct meta-questions can override a
+custom system-prompt persona, confirmed against a matching report on
+Ollama's own GitHub (`ollama/ollama#6873`) and the Qwen3 chat-template
+writeup. Not a Pandia bug and not a wiring bug in Selene either —
+`selene_local.py` genuinely sends the full system prompt every call, read
+directly to confirm. Fixed with an explicit IDENTITY paragraph added to
+`selene_personality.py`'s `_CHARACTER_PART_A` (so it flows into every
+variant — cloud included, harmlessly, since cloud was never affected)
+that directly forbids naming the underlying model. Noted here rather than
+skipped since Pandia's own prompt is a hand-copy of the same character
+text — worth knowing this block exists if Pandia's local models ever move
+off the Llama family and hit the same symptom.

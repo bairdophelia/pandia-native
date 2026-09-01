@@ -96,6 +96,14 @@ struct SettingsView: View {
                                 .font(.caption)
                         }
                         Toggle("Local only — don't fall back to cloud", isOn: $settings.localOnlyMode)
+                        // Added (2026-09-01), Fia's direct ask to try the
+                        // full personality prompt again now that a real
+                        // progress bar (LocalBrainProgress) means waiting
+                        // on a load reads as "downloading," not "stuck."
+                        // Off by default — see Settings.swift's doc
+                        // comment: the condensed prompt is what actually
+                        // held up on the default 1B model.
+                        Toggle("Use full personality prompt", isOn: $settings.useFullPersonalityPrompt)
                     }
                 } header: {
                     Text("On-device model (experimental)")
@@ -108,7 +116,7 @@ struct SettingsView: View {
                     // (2026-08-28) downloads the new one the same way —
                     // it's a different set of weights, not a config
                     // tweak — so also worth doing that switch on WiFi.
-                    Text("Answers on this phone with no internet needed, once the model's downloaded. First use (and switching models) downloads it — do that on WiFi. Normally falls back to cloud if it's not ready yet; turn on \"Local only\" to see the real error instead, useful while testing.")
+                    Text("Answers on this phone with no internet needed, once the model's downloaded. First use (and switching models) downloads it — do that on WiFi; you'll see real progress while it does. Normally falls back to cloud if it's not ready yet; turn on \"Local only\" to see the real error instead, useful while testing. \"Full personality prompt\" is the same one Selene's cloud replies use — more character, but a lot for a small model to hold onto; worth trying on 3B or larger, not recommended on 1B.")
                 }
 
                 Section("Away mode — cloud fallback") {

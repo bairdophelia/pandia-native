@@ -14,6 +14,13 @@ struct ContentView: View {
 
     @StateObject private var settings = PandiaSettings()
     @StateObject private var lan = LANClient()
+    // Bridges LocalBrain.swift's loadContainer progress reporting into
+    // this view — see that file's doc comment for why the bridge itself
+    // is plain DispatchQueue-based rather than actor-isolated. Observing
+    // the shared singleton directly (not passed in via init) since this
+    // is the only view that needs it right now, same reasoning as
+    // reaching for LocalBrain.shared itself in PandiaBrain.swift.
+    @ObservedObject private var localProgress = LocalBrainProgress.shared
 
     @State private var draft = ""
     @State private var isSending = false
@@ -45,6 +52,8 @@ struct ContentView: View {
                         }
                     }
                 }
+
+                localModelProgressBar
 
                 inputBar
             }
@@ -116,6 +125,39 @@ struct ContentView: View {
             Text("Set up Selene's address in Settings to enable home mode.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    // Added (2026-09-01), Fia's ask right after the download-visibility
+    // gap this project's own notes had already flagged actually bit her:
+    // "is there a way we can implement a progress bar or something more
+    // obvious that its doing something" while waiting on an on-device
+    // model download. Before this, Send just flipped to an hourglass for
+    // however long loadContainer took — no distinction between "working
+    // normally on a slow connection" and "hung." LocalBrainProgress
+    // (LocalBrain.swift) is nil whenever no local-model load is in
+    // flight, so this renders nothing at all outside that specific
+    // window — doesn't clutter the normal LAN/cloud send path, which
+    // never touches it.
+    @ViewBuilder
+    private var localModelProgressBar: some View {
+        if let fraction = localProgress.fractionCompleted {
+            VStack(alignment: .leading, spacing: 2) {
+                ProgressView(value: fraction)
+                    .tint(.seleneLilac)
+                // See LocalBrain.swift's doc comment: fractionCompleted
+                // tracks the download specifically and sits near 1.0 for
+                // a real stretch afterward while MLX loads the weights —
+                // this second message is what keeps that stretch from
+                // reading as a bar stuck at 100%.
+                Text(fraction < 0.999
+                     ? "Downloading on-device model… \(Int(fraction * 100))%"
+                     : "Loading model into memory…")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal)
+            .padding(.top, 4)
         }
     }
 

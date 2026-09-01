@@ -56,7 +56,11 @@ enum PandiaBrain {
         if settings.useLocalModel {
             print("[Pandia] trying on-device model \(settings.localModelId)…")
             do {
-                let replyText = try await LocalBrain.shared.reply(to: text, modelId: settings.localModelId)
+                let replyText = try await LocalBrain.shared.reply(
+                    to: text,
+                    modelId: settings.localModelId,
+                    useFullPrompt: settings.useFullPersonalityPrompt
+                )
                 print("[Pandia] on-device model answered (\(replyText.count) chars)")
                 return Reply(text: replyText, source: "device")
             } catch {
