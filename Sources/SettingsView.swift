@@ -29,9 +29,14 @@ struct SettingsView: View {
     // real risk of repeating that same round of trial-and-error — Custom
     // is there for exactly that, opted into deliberately rather than
     // stumbled into.
+    // 3B's label downgraded from "recommended" (2026-09-01) after it
+    // crashed on an actual device — almost certainly memory pressure, not
+    // something a retry fixes. Left in the list rather than removed: it
+    // may well be fine on a newer/higher-RAM phone, just not something to
+    // imply is a safe default the way "recommended" did.
     private static let presetModels: [(label: String, id: String)] = [
-        ("Llama 3.2 1B — fastest, lightest (~0.7 GB)", "mlx-community/Llama-3.2-1B-Instruct-4bit"),
-        ("Llama 3.2 3B — recommended, better replies (~1.8 GB)", "mlx-community/Llama-3.2-3B-Instruct-4bit"),
+        ("Llama 3.2 1B — fastest, most reliable (~0.7 GB)", "mlx-community/Llama-3.2-1B-Instruct-4bit"),
+        ("Llama 3.2 3B — better replies, may crash on some phones (~1.8 GB)", "mlx-community/Llama-3.2-3B-Instruct-4bit"),
     ]
     private static let customTag = "custom"
 

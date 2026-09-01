@@ -55,17 +55,65 @@ import Tokenizers
 // equivalent. Fixed via ChatSession's own `instructions:` parameter —
 // confirmed against mlx-swift-lm's actual ChatSession.swift source, not
 // guessed — which is documented as "optional system instructions for the
-// session," exactly this use. Worth knowing: PersonalityPrompt.swift's
-// prompt was written for a full-size cloud model; a tiny on-device model
-// like the default 1B may follow it far less faithfully. Feeding it the
-// same instructions anyway is still the right default — same reasoning
-// the PWA's brain.js already established ("same personality as Selene
-// for now") — a worse imitation beats no persona at all.
+// session," exactly this use.
+//
+// Follow-up (2026-09-01), from an actual device test: feeding the full
+// `pandiaSystemPrompt` still came back generic on the 1B model. Not a
+// regression of the fix above — the instructions genuinely reach the
+// model — just confirmation of the risk this file already called out:
+// the full prompt is nine dense sections built for a full-size cloud
+// model, and a 1B model doesn't reliably hold onto or prioritize that
+// much at once. Switched to `pandiaLocalSystemPrompt`
+// (PersonalityPrompt.swift) — a short, direct version covering only the
+// handful of rules that matter most for a brief phone exchange, sized
+// for what a small model can actually apply consistently, rather than
+// trusting a 1B model to self-prioritize among nine sections.
+//
+// Second follow-up (2026-09-01), same test session: switching the model
+// picker to 1B in Settings while a 3B send was still in flight didn't
+// unstick anything — the hourglass stayed up until the ORIGINAL request
+// finished or the app was force-quit. That's not a bug so much as a real
+// gap this file already called out above ("no download-progress
+// reporting... the UI just shows its normal 'sending' spinner for
+// however long the download+load takes") actually being hit: `send()`
+// captures the model id at the moment Send is tapped and has no
+// cancellation path, so there was never going to be a way to abandon a
+// slow load short of force-quitting. Force-quitting mid-download is
+// itself the likely cause of what happened next — a SECOND 3B attempt
+// that ran for a couple of minutes and then closed with no error message
+// at all, which is much more consistent with trying to load a half-
+// written file left behind by the interrupted first download than with
+// the 12GB-RAM iPhone actually running out of memory.
+//
+// Real fix, scoped to what's actually fixable without a device console:
+// a timeout around the load. It doesn't erase the "stuck with no
+// progress bar" gap (still a real follow-up worth doing), but it turns
+// "wait indefinitely, then force-quit" into "fails after a bounded time
+// with an actual, catchable error" — which flows through PandiaBrain's
+// existing localOnlyMode/localError handling exactly like any other
+// local-model failure. A corrupted partial download, specifically,
+// still needs a full reinstall to clear (see ../README.md) — nothing in
+// this app has a "clear the model cache" button yet.
 actor LocalBrain {
     static let shared = LocalBrain()
 
     private var session: ChatSession?
     private var loadedModelId: String?
+
+    /// Generous on purpose — a multi-GB model on a slow connection is a
+    /// real case, not just a hang, and failing too eagerly would turn a
+    /// legitimately-slow-but-working download into a false failure. Long
+    /// enough to cover that; short enough that a truly stuck load (or,
+    /// per the doc comment above, a corrupted cached file) fails with a
+    /// real error instead of leaving the UI stuck until a force-quit.
+    private static let loadTimeout: TimeInterval = 240
+
+    private enum LocalBrainError: Error, LocalizedError {
+        case timedOut
+        var errorDescription: String? {
+            "On-device model took too long to load (over \(Int(loadTimeout / 60)) minutes) — check your connection, or it may need a fresh install to clear a corrupted download."
+        }
+    }
 
     /// `modelId` is a Hugging Face repo id in mlx-community's MLX-converted
     /// format, e.g. "mlx-community/Llama-3.2-1B-Instruct-4bit" (Settings'
@@ -79,13 +127,30 @@ actor LocalBrain {
             return session
         }
         print("[Pandia] LocalBrain: loading container for \(modelId) — first use downloads weights, can take a while")
-        let container = try await LLMModelFactory.shared.loadContainer(
-            from: #hubDownloader(),
-            using: #huggingFaceTokenizerLoader(),
-            configuration: .init(id: modelId)
-        )
+        let container = try await withThrowingTaskGroup(of: ModelContainer.self) { group in
+            group.addTask {
+                try await LLMModelFactory.shared.loadContainer(
+                    from: #hubDownloader(),
+                    using: #huggingFaceTokenizerLoader(),
+                    configuration: .init(id: modelId)
+                )
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(Self.loadTimeout * 1_000_000_000))
+                throw LocalBrainError.timedOut
+            }
+            // First to finish wins — success or the timeout's throw — and
+            // the loser gets cancelled rather than left running in the
+            // background wasting bandwidth/battery on a load nothing's
+            // waiting on anymore.
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else {
+                throw LocalBrainError.timedOut
+            }
+            return result
+        }
         print("[Pandia] LocalBrain: container loaded")
-        let newSession = ChatSession(container, instructions: pandiaSystemPrompt)
+        let newSession = ChatSession(container, instructions: pandiaLocalSystemPrompt)
         session = newSession
         loadedModelId = modelId
         return newSession

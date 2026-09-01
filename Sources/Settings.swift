@@ -54,15 +54,18 @@ final class PandiaSettings: ObservableObject {
     private static let useLocalModelKey = "useLocalModel"
     private static let localModelIdKey = "localModelId"
     private static let localOnlyModeKey = "localOnlyMode"
-    // Upgraded (2026-08-28) from Llama-3.2-1B — same architecture family
-    // (so no new mlx-swift-lm compatibility risk, see LocalBrain.swift),
-    // ~3x the parameters, meaningfully better at actually following
-    // PersonalityPrompt.swift's instructions instead of answering as a
-    // flat generic assistant. ~1.8GB vs. ~0.7GB — still reasonable for a
-    // one-time WiFi download. Only affects fresh installs / never-set
-    // UserDefaults; SettingsView.swift now has a picker to change this
-    // (including back to 1B) without needing a rebuild.
-    private static let defaultLocalModelId = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+    // Reverted (2026-09-01) back to Llama-3.2-1B, after the brief 3B
+    // default (2026-08-28) crashed on an actual device test — almost
+    // certainly memory pressure: ~1.8GB of weights alone, before MLX's
+    // own runtime overhead and KV cache, is enough to get an app killed
+    // by iOS on some phones. Unlike a thrown Swift error, an OS memory
+    // kill can't be caught or recovered from in code — the fix has to be
+    // "don't default to a model that needs more memory than the device
+    // reliably has," not a try/catch. 3B stays available as a picker
+    // option in SettingsView.swift for anyone on a higher-RAM phone who
+    // wants to opt into that risk deliberately; it just isn't safe to
+    // hand to every fresh install as the default.
+    private static let defaultLocalModelId = "mlx-community/Llama-3.2-1B-Instruct-4bit"
 
     init() {
         lanHost = UserDefaults.standard.string(forKey: Self.lanHostKey) ?? ""

@@ -403,3 +403,76 @@ Switching models (including via Custom) downloads that model's weights
 on first use after switching, same as the very first on-device use did —
 worth doing on WiFi, same reasoning, now called out in the section's
 footer text too.
+
+**3B default reverted, personality prompt split by model size
+(2026-09-01), from real device testing once the AltServer install issue
+above got resolved:**
+
+- **3B crashed.** Not a hang, not a slow download — an actual crash,
+  consistent with memory pressure: ~1.8GB of weights alone, before MLX's
+  own runtime overhead and per-turn KV cache, is enough to get an app
+  killed by iOS on some phones. An OS memory kill isn't a thrown Swift
+  error — there's nothing to catch or recover from in code, which means
+  the fix has to be about what gets defaulted to, not about handling the
+  failure more gracefully. `Settings.swift`'s `defaultLocalModelId`
+  reverted to 1B; 3B stays selectable in `SettingsView.swift`'s picker
+  (relabeled to say plainly that it may crash on some phones, no longer
+  called "recommended") for anyone on higher-RAM hardware who wants to
+  opt in deliberately, but it's no longer what a fresh install gets
+  without asking.
+- **1B still came back generic**, even with the personality fix from
+  2026-08-28 correctly wired up (confirmed — the `instructions:`
+  parameter genuinely reaches the model). Root cause: `pandiaSystemPrompt`
+  is nine dense sections — tone, address rules, register examples,
+  signature lines, speech rules, honesty, autonomy, standby, away-mode —
+  written for a full-size cloud model. A 1B model doesn't reliably hold
+  onto or prioritize that much at once; asking it to was the actual bug,
+  not the wiring. Added `pandiaLocalSystemPrompt`
+  (`PersonalityPrompt.swift`) — a short, direct version keeping only the
+  handful of rules that matter most for a brief phone exchange (identity,
+  brevity, address rules, the forbidden-phrases list, away-mode context)
+  — and pointed `LocalBrain.swift` at that instead. `CloudBrain.swift`
+  is untouched and still uses the full prompt; cloud models are exactly
+  what it was written for.
+
+**3B crash re-examined, timeout added around model load (2026-09-01),
+same test session, from a more detailed play-by-play:** the "almost
+certainly memory pressure" line in the entry above was called out as
+overconfident, fairly — the iPhone 17 Pro has 12GB of RAM, not the ~8GB
+this project had assumed, which undercuts a simple "not enough total RAM"
+explanation. The actual sequence Fia described: said hi to 3B, waited
+~30s with the hourglass still up, switched the Settings picker to 1B
+mid-flight (which does nothing to the in-flight request — `send()`
+captures the model id at the moment Send is tapped, and there's no
+cancellation path in this code, so the original 3B load just kept
+running in the background), then force-quit the app. A second 3B attempt
+afterward ran for a couple of minutes and then closed with no error
+dialog at all. That fingerprint — silent close, no error, after an
+interrupted first download — points more at a corrupted or half-written
+cached model file left behind by the force-quit than at the device
+running out of memory outright. Not confirmed (no way to pull a crash log
+off the phone without a Mac/Xcode), just the better-supported theory of
+the two.
+
+Either way, the actual fixable gap is the one flagged back in Stage 5's
+own doc comment: no download-progress reporting, so a slow-but-working
+load and a genuinely stuck one look identical — just an indefinite
+hourglass with no way to abandon it short of force-quitting. Fixed with a
+240-second timeout around `LLMModelFactory.shared.loadContainer(...)` in
+`LocalBrain.swift`, using `withThrowingTaskGroup` to race the real load
+against a `Task.sleep` + throw and cancelling whichever one loses. A
+load that's genuinely just slow (big model, slow WiFi) still has four
+minutes to finish; a hung or corrupted one now fails with an actual,
+catchable `LocalBrainError.timedOut` instead of spinning forever — which
+flows through `PandiaBrain`'s existing `localOnlyMode`/`localError`
+handling exactly like any other local-model failure, so it's visible in
+the chat bubble instead of just a stuck hourglass.
+
+This does not by itself clear a corrupted cache if that's what's actually
+going on — there's no "clear the model cache" button in the app yet, so
+if 3B still fails (now with a visible timeout error rather than a silent
+crash), the next thing to try is a full delete-and-reinstall to force a
+completely fresh download, the same recovery Stage 6's SwiftData bug
+needed for the same underlying reason: some code fixes can only prevent a
+problem going forward, not repair a store or a cache that's already bad
+on disk.
