@@ -547,3 +547,61 @@ that directly forbids naming the underlying model. Noted here rather than
 skipped since Pandia's own prompt is a hand-copy of the same character
 text — worth knowing this block exists if Pandia's local models ever move
 off the Llama family and hit the same symptom.
+
+**Sent-bubble color, gold → teal (2026-09-02), Fia's ask:** `ContentView
+.swift`'s `ChatBubble` now backs the user's own messages with
+`Color.seleneTeal.opacity(0.22)` instead of gold — same treatment, same
+opacity, just the other color, so the quiet/muted feel carries over.
+Teal otherwise means "Selene/home" specifically everywhere else in the
+app (the status line, the "Selene · home" source tag right under this
+same bubble) — a deliberate ask, not a bug, just noted since it's the
+one spot that breaks Theme.swift's one-color-one-meaning rule.
+
+**"Selene/home" meaning moved off teal onto moon-white (2026-09-02),
+Fia's direct follow-up to the change above:** "make selene/home more of
+a silver or a white? that way it more references the fact that I'm
+talking to the moon when I'm home." Rather than inventing a silver,
+checked Selene's own `styles.css` first (same sourcing rule this whole
+file follows) and found `--full-moon-white: #f3efe4` already exists
+there for exactly this purpose — it's literally the color her wireframe
+shell (and `--cyan-bright`, the teal this project already pulled)
+switches to during an actual full moon
+(`body.full-moon{ --cyan-bright:var(--full-moon-white); }`). Added as
+`Color.seleneMoonWhite` in `Theme.swift` and swapped in everywhere the
+"connected to Selene / home" meaning lived: `ContentView.swift`'s status
+line and `sourceColor`'s "lan"/"local" case, and `SettingsView.swift`'s
+"Connected to Selene" label. Also resolves the note left in the entry
+right above this one — teal is now cleanly just "the app's general
+accent + the user's own bubble," no longer double-booked with a
+state meaning, so the one-color-one-meaning rule holds again.
+`seleneTeal`'s general app-tint uses (`ContentView`/`SettingsView`'s
+`.tint(.seleneTeal)`) were left alone — Fia's ask was specifically about
+the Selene/home indicator, not the whole app's accent color.
+
+**Selene/Pandia parity check (2026-09-02), Fia's ask after the Qwen
+identity fix landed on the Selene side:** rather than eyeballing it, ran
+an actual `diff` between `selene_personality.py`'s
+`_CHARACTER_PART_A + _HONESTY_NO_TOOLS + _CHARACTER_PART_B` (the exact
+pieces this file's own docstring says get hand-copied) and this
+project's `pandiaSystemPrompt` with its Pandia-specific "PANDIA AWAY
+MODE" ending stripped off first. Result: byte-for-byte identical except
+for one gap — the IDENTITY paragraph added to Selene earlier that same
+day hadn't been copied over yet. Fixed in `PersonalityPrompt.swift`:
+the full paragraph added to `pandiaSystemPrompt` verbatim, and a
+one-line condensed version added to `pandiaLocalSystemPrompt` (which
+was never a 1:1 hand-copy of anything Selene-side to begin with, so
+there was no drift there, just the same precaution worth having).
+Re-ran the diff after the fix — clean. Pandia's own on-device models
+are Llama-family, not Qwen, so this isn't patching an observed bug the
+way it was on Selene, but `SettingsView.swift`'s Custom model option
+means a user could point on-device inference at a Qwen (or similarly
+identity-stubborn) model without this paragraph existing to guard
+against it — worth having regardless of what ships as the default.
+
+**Known remaining gap, not fixed (out of scope for this pass):** the
+PWA's `../PWA/js/brain.js`'s `PANDIA_SYSTEM_PROMPT` — the actual
+original source this file's own `pandiaSystemPrompt` was hand-copied
+from — also doesn't have the IDENTITY paragraph. Left alone since this
+pass was scoped to Selene/native-Pandia parity specifically and the PWA
+hasn't been touched otherwise this session; flag if the PWA still needs
+to stay in sync too.

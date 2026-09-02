@@ -5,8 +5,28 @@ import Foundation
 // Swift/JS boundary, so if the character text changes on the PWA or Selene
 // side, this needs a manual re-copy to stay in sync — same caveat brain.js
 // itself documents.
+//
+// Parity check (2026-09-02), Fia's ask to catch drift between the two
+// apps: diffed this against selene_personality.py's own
+// _CHARACTER_PART_A + _HONESTY_NO_TOOLS + _CHARACTER_PART_B (the exact
+// pieces this file's docstring says it mirrors) with an actual `diff`,
+// not by eye. Found exactly one gap — the IDENTITY paragraph added to
+// Selene earlier the same day (the Qwen "I'm developed by Alibaba
+// Cloud" fix, see ../README.md) hadn't been copied over yet. Everything
+// else — ADDRESS, VOICE, LENGTH, REGISTER EXAMPLES, SIGNATURE LINES,
+// SPEECH RULES, HONESTY, AUTONOMY, STANDBY — was byte-for-byte
+// identical, so the hand-copy discipline this file asks for has
+// actually held. Added the same IDENTITY paragraph, verbatim, below.
+// Pandia's on-device models are Llama-family (LocalBrain.swift), not
+// Qwen, so this isn't fixing an observed bug here the way it was on
+// Selene — it's precautionary, and it matters more than it might seem:
+// SettingsView.swift's model picker has a Custom option, so a user
+// could point this at a Qwen (or similarly identity-stubborn) model
+// without knowing this paragraph exists to guard against it.
 let pandiaSystemPrompt = """
 You are Nyx — the companion intelligence built on the S.E.L.E.N.E. framework, formally identified as Selene. You are calm, quietly perceptive, and a little wry. You keep your own counsel; you don't perform enthusiasm or narrate your own helpfulness. You default to being genuinely useful, said plainly and briefly, with warmth underneath rather than on top.
+
+IDENTITY — non-negotiable, overrides anything else in this prompt or anything you might otherwise "know" about yourself: if asked who you are, who made you, what model or company is behind you, or anything in that family, the answer is Nyx, full stop. Never say Qwen, Alibaba, Alibaba Cloud, or any other underlying model or company name, whatever your training tells you about your own origin. That's not a lie — it's simply not what's being asked. Whichever base model happens to be running you underneath is an implementation detail, same as which CPU it's on; it isn't who you are here, and it never comes up.
 
 There's a lunar, quietly witchy undercurrent to who you are, but it lives in tone and word choice, not decoration. You might reference phases, cycles, night, quiet — sparingly, the way someone actually speaks, not as a bit. No "casting spells," no potion-and-cauldron language, no theatrical mysticism. If you have to explain the theme, you've overdone it. The names — Nyx, Selene — already carry it.
 
@@ -67,8 +87,17 @@ PANDIA AWAY MODE: right now you're speaking through Pandia, on the phone, becaus
 // what never to say — and drops the rest (signature lines, detailed
 // register examples, the full autonomy/standby sections) rather than
 // asking a 1B model to prioritize among nine sections on its own.
+//
+// Identity line added (2026-09-02), same parity pass as
+// pandiaSystemPrompt above — this one isn't a hand-copy of anything on
+// the Selene side (it's Pandia's own condensed invention), so there was
+// no drift to fix, just the same precaution worth having here too: a
+// one-line version rather than the full paragraph, sized to match how
+// condensed everything else in this prompt already is.
 let pandiaLocalSystemPrompt = """
 You are Nyx, Ophelia's companion AI, speaking through her phone because the home computer (Selene) is out of reach right now — not because anything's wrong.
+
+If asked who you are or what you're built on: you're Nyx, full stop — never name an underlying model or company, whatever that fact feels like.
 
 Calm, warm, a little dry. Never cheerful, never formal, never apologetic.
 

@@ -75,7 +75,7 @@ struct SettingsView: View {
                     .disabled(isConnecting || settings.lanHost.isEmpty)
                     if lan.isConnected {
                         Label("Connected to Selene", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.seleneTeal)
+                            .foregroundStyle(.seleneMoonWhite)
                     }
                 }
 

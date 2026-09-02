@@ -105,7 +105,7 @@ struct ContentView: View {
     private var statusLine: some View {
         if lan.isConnected {
             Label("Home — connected to Selene", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.seleneTeal)
+                .foregroundStyle(.seleneMoonWhite)
                 .font(.footnote)
         } else if !settings.lanHost.isEmpty {
             if settings.useLocalModel && settings.localOnlyMode {
@@ -284,12 +284,21 @@ struct ContentView: View {
 private struct ChatBubble: View {
     let turn: ChatTurn
 
+    // Sent-bubble color changed gold → teal (2026-09-02), Fia's ask, same
+    // treatment otherwise (same 0.22 opacity over the dark background, same
+    // rounded shape) so the "vibe" — quiet, not loud — carries over from
+    // gold. Worth knowing: Theme.swift's palette otherwise treats teal as
+    // meaning "Selene/home" specifically (the status line, and the "Selene
+    // · home" source tag right below THIS bubble, both use it) — a
+    // deliberate request, not something that needed flagging further, just
+    // noted here since it's a break from that one-color-one-meaning rule
+    // the rest of the app follows.
     var body: some View {
         VStack(alignment: turn.role == "user" ? .trailing : .leading, spacing: 2) {
             Text(turn.text)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(turn.role == "user" ? Color.seleneGold.opacity(0.22) : Color.white.opacity(0.07))
+                .background(turn.role == "user" ? Color.seleneTeal.opacity(0.22) : Color.white.opacity(0.07))
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             if let source = turn.source {
                 Text(sourceLabel(source))
@@ -327,13 +336,14 @@ private struct ChatBubble: View {
     }
 
     // Same state-color meanings Selene's own CSS uses (see Theme.swift's
-    // doc comment): teal = her, lilac = local, orange = cloud, red = dead
-    // end. Applying that here, not just the hex values, is the actual
+    // doc comment): moon-white = her, lilac = local, orange = cloud, red =
+    // dead end. Applying that here, not just the hex values, is the actual
     // point of matching her palette — not just "colors from the same
-    // family" but "the same color still means the same thing."
+    // family" but "the same color still means the same thing." (Moon-white
+    // here since 2026-09-02, replacing teal — see Theme.swift.)
     private func sourceColor(_ source: String) -> Color {
         switch source {
-        case "lan", "local": return .seleneTeal
+        case "lan", "local": return .seleneMoonWhite
         case "device": return .seleneLilac
         case "error": return .seleneDangerRed
         default: return .seleneOrange

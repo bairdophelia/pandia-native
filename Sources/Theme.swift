@@ -11,18 +11,33 @@ import SwiftUI
 // CSS explicitly keeps a state palette where "the same color always means
 // the same thing everywhere on screen" (LINK source, weather CONDITION,
 // load bars all share it). Pandia only has one place that needs a state
-// palette — the source tag under each reply — so it reuses the same two
-// meanings Selene already established: teal for her own (home/LAN),
-// lilac for local, orange for cloud.
+// palette — the source tag under each reply — so it reuses the same
+// meanings Selene already established: moon-white for her own (home/LAN,
+// see seleneMoonWhite below), lilac for local, orange for cloud. Teal
+// stays as the app's general accent/tint (nav bar, buttons) and, per
+// Fia's own request, the user's own sent-message bubbles — no longer
+// tied to a specific "home" meaning the way it is in Selene's own CSS.
 extension Color {
     /// --ink — page/app background.
     static let seleneInk = Color(red: 0x02 / 255, green: 0x04 / 255, blue: 0x0A / 255)
     /// --cyan-bright — the wireframe shell's own resting color; Selene's
-    /// signature teal. Used here for anything meaning "connected to
-    /// Selene / home," matching sphere.js's SHELL_TEAL.
+    /// signature teal. General app accent/tint here, and (2026-09-02,
+    /// Fia's request) the user's own sent-message bubble color — see
+    /// seleneMoonWhite below for the color that now carries the
+    /// "home/Selene" meaning this used to.
     static let seleneTeal = Color(red: 0x4F / 255, green: 0xC6 / 255, blue: 0xBD / 255)
-    /// --gold — muted, not a bright yellow. The moon's color, and the
-    /// user's own chat bubble (a small "this is you" accent).
+    /// --full-moon-white (2026-09-02, Fia's request: "more silver or
+    /// white... references the fact that I'm talking to the moon when
+    /// I'm home"). Not a made-up silver — this is literally the color
+    /// sphere.js's wireframe shell (and styles.css's --cyan-bright,
+    /// Pandia's own seleneTeal above) swaps to during an actual full
+    /// moon (styles.css's `body.full-moon{ --cyan-bright:var(--full-moon-
+    /// white); }`), pulled from Selene's real source the same way every
+    /// other color in this file was. Used for anything meaning
+    /// "connected to Selene / home" — the role seleneTeal used to play.
+    static let seleneMoonWhite = Color(red: 0xF3 / 255, green: 0xEF / 255, blue: 0xE4 / 255)
+    /// --gold — muted, not a bright yellow. The moon's color, previously
+    /// also the user's own chat bubble accent (now teal — see above).
     static let seleneGold = Color(red: 0xD9 / 255, green: 0xB7 / 255, blue: 0x68 / 255)
     /// --lilac — sphere.js's WALKER_COLOR, used there for local
     /// processing. Reused here for the exact same meaning: Pandia's own
@@ -48,6 +63,7 @@ extension Color {
 extension ShapeStyle where Self == Color {
     static var seleneInk: Color { .seleneInk }
     static var seleneTeal: Color { .seleneTeal }
+    static var seleneMoonWhite: Color { .seleneMoonWhite }
     static var seleneGold: Color { .seleneGold }
     static var seleneLilac: Color { .seleneLilac }
     static var seleneOrange: Color { .seleneOrange }
