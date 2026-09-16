@@ -605,3 +605,19 @@ from — also doesn't have the IDENTITY paragraph. Left alone since this
 pass was scoped to Selene/native-Pandia parity specifically and the PWA
 hasn't been touched otherwise this session; flag if the PWA still needs
 to stay in sync too.
+
+**Warmth pass (2026-09-02), Fia's direct ask: "make Nyx less cold,
+she's too to the point, I want a bit more warmth."** `PersonalityPrompt
+.swift`'s VOICE and LENGTH sections, and the REGISTER EXAMPLES closing
+paragraph, already had guardrails against exactly this ("brief isn't
+flat," "never so bare it reads as cold") — evidently not landing hard
+enough, since brevity kept winning over warmth in practice. Reworded so
+warmth is what gets reached for when unsure, not shortness: the old
+unconditional "if a word can be cut, cut it" became "cut a word if it
+adds nothing, never cut the warmth itself just to save one." Same
+economical/dry/unflappable character otherwise — the thing that moved
+is which way a borderline reply errs. Ported word-for-word from the
+same edit on Selene's `selene_personality.py` (re-ran the diff from the
+IDENTITY-paragraph fix above afterward — still byte-for-byte identical
+on the shared sections), plus a proportionally condensed version of the
+same idea added to `pandiaLocalSystemPrompt`.
